@@ -6,7 +6,8 @@ from typing import Union
 
 def run_command(command: Union[str, list]):
     output = subprocess.run(command, capture_output=True, text=True)
-    text_output = output.stdout.strip()
+    text_output = output.stdout
+    print(text_output)
     return output.returncode, text_output
 
 
@@ -15,6 +16,7 @@ def check_conda_installed():
         check_conda_command = 'where conda'
     else:
         check_conda_command = 'which conda'
+    print('Conda found at: ')
     retcode, text = run_command(check_conda_command)
     if retcode != 0:
         raise OSError('Conda installation not found.')
