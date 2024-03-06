@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from os_utilities import run_command
+from os_utils import run_command
 
 
 def check_conda_installed():

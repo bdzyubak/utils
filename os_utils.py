@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 import subprocess
 from typing import Union, Tuple
 
@@ -33,6 +34,26 @@ def get_file(search_path: Union[str, Path], mask: str = '*') -> Path:
         raise OSError(f'Multiple files match mask {mask} at {search_path}')
     file_path: Path = files[0]
     return file_path
+
+
+def make_fresh_dir(path: Union[str, Path], accept_fail_to_remove: bool = False):
+    if isinstance(path, str):
+        path = Path(path)
+
+    remove_dir(path, accept_fail_to_remove)
+
+    path.mkdir(exist_ok=True, parents=True)
+
+
+def remove_dir(path: Union[str, Path], accept_fail_to_remove: bool = False):
+    if path.exists():
+        try:
+            shutil.rmtree(path)
+        except PermissionError as e:
+            if not accept_fail_to_remove:
+                raise e
+            else:
+                print(f'WARNING: Failed to remove directory {path}')
 
 
 if __name__ == '__main__':
