@@ -2,12 +2,21 @@ from pathlib import Path
 import shutil
 import subprocess
 from typing import Union, Tuple
+import re
 
 
-def run_command(command: Union[str, list]) -> Tuple[int, str]:
+def run_command(command: Union[str, list], verbose: bool = False) -> Tuple[int, str]:
     output = subprocess.run(command, capture_output=True, text=True)
     text_output = output.stdout
+    # Remove conda escape characters, if present
+    ansi_cleaned = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
+
+    text_output = ansi_cleaned.sub('', text_output)
     print(text_output)
+
+    if verbose:
+        print(f'Command: {command}')
+        print(f'Result: {output.returncode}: {text_output}')
     return output.returncode, text_output
 
 
