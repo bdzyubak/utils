@@ -65,5 +65,10 @@ def remove_dir(path: Union[str, Path], accept_fail_to_remove: bool = False):
                 print(f'WARNING: Failed to remove directory {path}')
 
 
-if __name__ == '__main__':
-    raise OSError('Not meant to be run directly. Import functions instead.')
+def filename_to_title(file_path: Union[Path, str]):
+    if isinstance(file_path, str):
+        file_path = Path(file_path)
+    filename = file_path.name.replace('_', ' ').strip()
+    words = [name[0].upper()+name[1:] for name in filename.split(' ')]
+    return ' '.join(words)
+
