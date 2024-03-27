@@ -24,3 +24,11 @@ def pick_columns_trim_name(df: pd.DataFrame, str_pattern: str) -> pd.DataFrame:
 
     df_acc = df[columns].rename(columns=map_dict)
     return df_acc
+
+
+def set_display_rows_cols(max_rows=20, max_columns=20, max_width=1000):
+    # Sets how many rows and columns to display when looking at the pandas dataframe e.g. with df.head()
+    # Use this at the top of a data analysis script
+    pd.set_option('display.max_rows', max_rows)
+    pd.set_option('display.max_columns', max_columns)
+    pd.set_option('display.width', max_width)
