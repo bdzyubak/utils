@@ -20,3 +20,7 @@ def set_cap_gpu_memory(gpu_memory_target_in_gb):
         gpu_memory_target_in_gb = round(gpu_memory_total * 0.8, 1)
         print(f'Setting target to {gpu_memory_target_in_gb} GB')
     return gpu_memory_target_in_gb
+
+
+def tensor_to_numpy(output):
+    return output.detach().cpu().numpy()
