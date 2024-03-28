@@ -22,5 +22,12 @@ def set_cap_gpu_memory(gpu_memory_target_in_gb):
     return gpu_memory_target_in_gb
 
 
-def tensor_to_numpy(output):
-    return output.detach().cpu().numpy()
+def tensor_to_numpy(tensor: torch.Tensor):
+    if not isinstance(tensor, torch.Tensor):
+        print(f'The input is not a tensor. Returning self')
+        return tensor
+    return tensor.detach().cpu().numpy()
+
+
+def average_round_metric(metric: list, decimal_points=3):
+    return round(sum(metric) / len(metric), decimal_points)

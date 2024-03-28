@@ -14,7 +14,7 @@ def run_command(command: Union[str, list], verbose: bool = False) -> Tuple[int, 
     text_output = ansi_cleaned.sub('', text_output)
     print(text_output)
     if output.returncode != 0:
-        raise OSError(f'Could not execute command.')
+        raise OSError(f'Could not execute command {command}')
 
     if verbose:
         print(f'Command: {command}')
