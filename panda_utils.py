@@ -43,3 +43,13 @@ def do_train_val_test_split(df):
     if train_val_overlap or val_test_overlap:
         raise RuntimeError('Train/val/test sets have overlap!')
     return df_test, df_train, df_val
+
+
+def read_dataframe(file_path, nrows=None):
+    if file_path.endswith('.csv'):
+        df = pd.read_csv(file_path, nrows=nrows)
+    elif file_path.endswith('.tsv'):
+        df = pd.read_csv(file_path, nrows=nrows, sep='\t')
+    else:
+        raise ValueError(f'Unsupported file type: {file_path}')
+    return df
