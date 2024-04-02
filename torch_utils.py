@@ -46,3 +46,8 @@ def predict_tokenized_classification(model, test_dataloader, device='cuda:0'):
         preds += list(tensor_to_numpy(preds_batch))
 
     return preds
+
+
+def count_trainable_parameters(model):
+    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    return num_params
