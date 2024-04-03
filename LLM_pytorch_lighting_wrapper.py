@@ -1,13 +1,15 @@
+from lightning.pytorch import loggers
+from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
 from sklearn.metrics import accuracy_score
 
 import torch
 from torch.optim import AdamW
 import lightning as pl
 
-from transformers import DistilBertTokenizer, DistilBertForSequenceClassification, RobertaTokenizer, RobertaModel
+from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
 
+from torch_utils import freeze_layers
 from utils.torch_utils import tensor_to_numpy, average_round_metric
-
 
 # NB: Speed up processing for negligible loss of accuracy. Verify acceptable accuracy for a production use case
 torch.set_float32_matmul_precision('medium')
@@ -85,36 +87,6 @@ class FineTuneLLM(pl.LightningModule):
 #         raise ValueError(f'The following models are not supported {models_unsupported}')
 
 
-class FineTuneLLM_RobertaBaseGo(FineTuneLLM):
-    def __init__(self, num_classes, model_name='SamLowe/roberta-base-go_emotions', tokenizer="FacebookAI/roberta-base",
-                 device='cuda:0', learning_rate=1e-6, freeze_pretrained_params=True):
-        # Same as BERT but with better pretraining tricks
-        if model_name.startswith('SamLowe/roberta-base-go_emotions'):
-            model = RobertaModel.from_pretrained(model_name, num_labels=num_classes)
-            model.pooler
-        else:
-            raise NotImplementedError()
-
-        if tokenizer == "FacebookAI/roberta-base":
-            tokenizer = RobertaTokenizer.from_pretrained(tokenizer)
-        else:
-            raise NotImplementedError()
-
-        super(FineTuneLLM_RobertaBaseGo, self).__init__(device=device, learning_rate=learning_rate, model=model,
-                                                        tokenizer=tokenizer)
-
-        self.freeze_params(freeze_pretrained_params)
-
-    def freeze_params(self, freeze_pretrained_params):
-        if freeze_pretrained_params:
-            for param_name, param in self.model.named_parameters():
-                if param_name not in ['model.pooler.dense.weight', 'model.pooler.dense.bias']:
-                    param.requires_grad = False
-                else:
-                    print('Kept parameter trainable: ' + param_name)
-                    param.requires_grad = True
-
-
 class FineTuneLLM_Distilbert(FineTuneLLM):
     def __init__(self, num_classes, model_name='distilbert-base-uncased', tokenizer='distilbert-base-uncased',
                  device='cuda:0', learning_rate=1e-6, freeze_pretrained_params=True):
@@ -124,20 +96,32 @@ class FineTuneLLM_Distilbert(FineTuneLLM):
         else:
             raise NotImplementedError()
 
+        if freeze_pretrained_params:
+            list_task_head = ['classifier.bias', 'classifier.weight', 'pre_classifier.bias', 'pre_classifier.weight']
+            model = freeze_layers(list_task_head, model)
+
         if tokenizer == 'distilbert-base-uncased':
             tokenizer = DistilBertTokenizer.from_pretrained(tokenizer)
         else:
             raise NotImplementedError()
         super(FineTuneLLM_Distilbert, self).__init__(device=device, learning_rate=learning_rate, model=model,
                                                      tokenizer=tokenizer)
-        self.freeze_params(freeze_pretrained_params)
 
-    def freeze_params(self, freeze_pretrained_params):
-        if freeze_pretrained_params:
-            for param_name, param in self.model.named_parameters():
-                if param_name not in ['model.classifier.bias', 'model.classifier.weight', 'model.pre_classifier.bias',
-                                      'model.pre_classifier.weight']:
-                    param.requires_grad = False
-                else:
-                    print('Kept parameter trainable: ' + param_name)
-                    param.requires_grad = True
+
+def model_setup(save_dir, num_classes, model_name='distilbert-base-uncased', freeze_pretrained_params=True):
+    model_name_clean = model_name.split('\\')[-1]
+    checkpoint_callback = ModelCheckpoint(dirpath=save_dir,
+                                          filename=model_name_clean+"-{epoch:02d}-{val_loss:.2f}",
+                                          save_top_k=1,
+                                          monitor="val_acc")
+    early_stop_callback = EarlyStopping(monitor="val_acc", min_delta=0.0001, patience=5, verbose=False, mode="max")
+    tb_logger = loggers.TensorBoardLogger(save_dir=save_dir)
+    if model_name.startswith('distilbert-base-uncased'):
+        model = FineTuneLLM_Distilbert(num_classes=num_classes, model_name=model_name,
+                                       freeze_pretrained_params=freeze_pretrained_params)
+    else:
+        ValueError(f"Model Name {model_name} unsupported.")
+
+    trainer = pl.Trainer(max_epochs=100, callbacks=[checkpoint_callback, early_stop_callback], logger=tb_logger,
+                         log_every_n_steps=50)
+    return model, trainer

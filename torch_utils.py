@@ -2,6 +2,8 @@ import numpy as np
 import torch
 from typing import Union
 
+from os_utils import endswith_list
+
 
 def get_tensor_size(data: Union[torch.Tensor, dict]):
     if isinstance(data, dict):
@@ -51,3 +53,26 @@ def predict_tokenized_classification(model, test_dataloader, device='cuda:0'):
 def count_trainable_parameters(model):
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     return num_params
+
+
+def freeze_layers(list_task_head, model):
+    for param_name, param in model.named_parameters():
+        if endswith_list(param_name, list_task_head):
+            param.requires_grad = True
+        else:
+            print('Kept parameter trainable: ' + param_name)
+            param.requires_grad = False
+    return model
+
+
+def get_frozen_layers(model):
+    trainable = list()
+    frozen = list()
+    for param_name, param in model.named_parameters():
+        if param.requires_grad:
+            print(f"{param_name}: Trainable")
+            trainable.append(param_name)
+        else:
+            print(f"{param_name}: Frozen")
+            frozen.append(param_name)
+    return trainable, frozen
