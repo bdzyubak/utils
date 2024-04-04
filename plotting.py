@@ -7,10 +7,17 @@ import tbparse
 from matplotlib import pyplot as plt
 
 from utils.os_utils import filename_to_title
-plt.rcParams["figure.figsize"] = (9.6, 7.2)  # must set at the top
-plt.rcParams.update({'font.size': 22})  # must set at the top
-sns.set()
 
+
+def set_plotting_defaults():
+    # Import this to set defaults, no need to run
+    plt.rcParams["figure.figsize"] = (9.6, 7.2)  # must set at the top
+    plt.rcParams.update({'font.size': 22})  # must set at the top
+    sns.set()
+
+
+# Runs when anything is imported from this module. Import set_plotting_defaults() if you will just be plotting in the script
+set_plotting_defaults()
 
 
 def lineplot(df: pd.DataFrame, save_file: Optional[Path] = None, xlabel: Optional[str] = None,
