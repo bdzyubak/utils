@@ -53,3 +53,9 @@ def read_dataframe(file_path, nrows=None):
     else:
         raise ValueError(f'Unsupported file type: {file_path}')
     return df
+
+
+def is_close(a, b, abs_tol=1e-4):
+    return abs(a - b) <= abs_tol
+# def is_close(a, b, rel_tol=1e-4, abs_tol=1e-4):
+    # return abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)

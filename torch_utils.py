@@ -5,7 +5,7 @@ from typing import Union
 
 def get_tensor_size(data: Union[torch.Tensor, dict]):
     if isinstance(data, dict):
-        data = data['data']  # Try to get tensorf from typical loader object
+        data = data['data']  # Try to get tensor from typical loader object
 
     size_in_bytes = data.nelement() * data.element_size()
     size_in_mb = round(size_in_bytes / 1000 / 1000, 1)
@@ -46,3 +46,36 @@ def predict_tokenized_classification(model, test_dataloader, device='cuda:0'):
         preds += list(tensor_to_numpy(preds_batch))
 
     return preds
+
+
+def get_model_size_mb(model):
+    param_size = 0
+    for param in model.parameters():
+        param_size += param.nelement() * param.element_size()
+    buffer_size = 0
+    for buffer in model.buffers():
+        buffer_size += buffer.nelement() * buffer.element_size()
+
+    size_all_mb = round((param_size + buffer_size) / 1024 ** 2)
+    print(f"Model size: {size_all_mb} MB")
+    return size_all_mb
+
+
+def get_model_param_num(model):
+    param_number = 0
+    param_number_trainable = 0
+    for param in model.parameters():
+        param_number += param.numel()
+        if param.requires_grad:
+            param_number_trainable += param.numel()
+    param_number_million = round(param_number / 1e6)
+    param_trainable_million = round(param_number / 1e6)
+    print(f"Parameters: {param_number_million} million")
+    print(f"Trainable Parameters: {param_trainable_million} million")
+    return param_number, param_number_trainable
+
+
+def get_model_size(model):
+    size_all_mb = get_model_size_mb(model)
+    param_number, param_number_trainable = get_model_param_num(model)
+    return size_all_mb, param_number, param_number_trainable
