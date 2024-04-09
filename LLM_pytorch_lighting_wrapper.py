@@ -16,16 +16,33 @@ from utils.torch_utils import tensor_to_numpy, average_round_metric
 torch.set_float32_matmul_precision('medium')
 torch.backends.cudnn.allow_tf32 = True
 
+supported_models = ['distilbert-base-uncased', 'bert-base-uncased']
+
 
 class FineTuneLLM(pl.LightningModule):
-    def __init__(self, model, tokenizer, device='cuda:0', learning_rate=1e-6):
+    def __init__(self, model_name, num_classes, device='cuda:0', learning_rate=1e-6, do_layer_freeze=True):
         super(FineTuneLLM, self).__init__()
-        self.model = model
-        self.tokenizer = tokenizer
-        self.model.to(device)
+        self.set_up_model_and_tokenizer(device, do_layer_freeze, model_name, num_classes)
 
         self.learning_rate = learning_rate
         # self.save_hyperparameters()
+
+    def set_up_model_and_tokenizer(self, device, do_layer_freeze, model_name, num_classes):
+        check_model_supported(model_name)
+        # TODO: explore swapping tokenizers. For now, use native
+        if model_name.startswith('distilbert-base-uncased'):
+            model = DistilBertForSequenceClassification.from_pretrained(model_name, num_labels=num_classes)
+            fine_tune_head = ['classifier.bias', 'classifier.weight', 'pre_classifier.bias', 'pre_classifier.weight']
+        elif model_name.startswith('bert-base-uncased'):
+            model = BertForSequenceClassification.from_pretrained(model_name, num_labels=num_classes)
+            fine_tune_head = ['classifier.bias', 'classifier.weight', 'pre_classifier.bias', 'pre_classifier.weight']
+        else:
+            raise NotImplementedError()
+
+        self.model = model
+        if do_layer_freeze:
+            self.model = freeze_layers(fine_tune_head, self.model)
+        self.model.to(device)
 
     def forward(self, input_ids, attention_mask, labels=None):
         return self.model(input_ids, attention_mask=attention_mask, labels=labels)
@@ -77,6 +94,21 @@ class FineTuneLLM(pl.LightningModule):
         return self.optimizer
 
 
+def check_model_supported(model_name):
+    if model_name not in supported_models:
+        raise NotImplementedError(f"The model support for {model_name} has not been implemented.")
+
+
+def tokenizer_setup(tokenizer_name):
+    check_model_supported(tokenizer_name)
+    if tokenizer_name.startswith('distilbert-base-uncased'):
+        tokenizer = DistilBertTokenizer.from_pretrained(tokenizer_name)
+    elif tokenizer_name.startswith('bert-base-uncased'):
+        tokenizer = BertTokenizer.from_pretrained(tokenizer_name)
+    else:
+        raise NotImplementedError()
+    return tokenizer
+
 # def qc_requested_models_supported(model_names):
 #     models_unsupported = list()
 #     for model_name in model_names:
@@ -88,48 +120,7 @@ class FineTuneLLM(pl.LightningModule):
 #         raise ValueError(f'The following models are not supported {models_unsupported}')
 
 
-class FineTuneLLM_Distilbert(FineTuneLLM):
-    def __init__(self, num_classes, model_name='distilbert-base-uncased', tokenizer='distilbert-base-uncased',
-                 device='cuda:0', learning_rate=1e-6, freeze_pretrained_params=True):
-        # Lean version of BERT
-        if model_name.startswith('distilbert-base-uncased'):
-            model = DistilBertForSequenceClassification.from_pretrained(model_name, num_labels=num_classes)
-        else:
-            raise NotImplementedError()
-
-        if freeze_pretrained_params:
-            list_task_head = ['classifier.bias', 'classifier.weight', 'pre_classifier.bias', 'pre_classifier.weight']
-            model = freeze_layers(list_task_head, model)
-
-        if tokenizer == 'distilbert-base-uncased':
-            tokenizer = DistilBertTokenizer.from_pretrained(tokenizer)
-        else:
-            raise NotImplementedError()
-        super(FineTuneLLM_Distilbert, self).__init__(device=device, learning_rate=learning_rate, model=model,
-                                                     tokenizer=tokenizer)
-
-
-class FineTuneLLM_Bert(FineTuneLLM):
-    def __init__(self, num_classes, model_name='bert-base-uncased', tokenizer='bert-base-uncased',
-                 device='cuda:0', learning_rate=1e-6):
-        if "bert" not in model_name or "distil" in model_name or "roberta" in model_name:
-            raise ValueError(f"Wrong initialization class for model name {model_name}")
-
-        # Full version of Bert
-        if model_name == 'bert-base-uncased':
-            model = BertForSequenceClassification.from_pretrained(model_name, num_labels=num_classes)
-        else:
-            raise NotImplementedError()
-
-        if tokenizer == 'bert-base-uncased':
-            tokenizer = BertTokenizer.from_pretrained(tokenizer)
-        else:
-            raise NotImplementedError()
-        super(FineTuneLLM_Bert, self).__init__(device=device, learning_rate=learning_rate, model=model,
-                                                     tokenizer=tokenizer)
-
-
-def model_setup(save_dir, num_classes, model_name='distilbert-base-uncased', freeze_pretrained_params=True):
+def model_setup(save_dir, num_classes, model_name='distilbert-base-uncased', do_layer_freeze=True):
     model_name_clean = model_name.split('\\')[-1]
     checkpoint_callback = ModelCheckpoint(dirpath=save_dir,
                                           filename=model_name_clean+"-{epoch:02d}-{val_loss:.2f}",
@@ -137,11 +128,8 @@ def model_setup(save_dir, num_classes, model_name='distilbert-base-uncased', fre
                                           monitor="val_acc")
     early_stop_callback = EarlyStopping(monitor="val_acc", min_delta=0.0001, patience=5, verbose=False, mode="max")
     tb_logger = loggers.TensorBoardLogger(save_dir=save_dir)
-    if model_name.startswith('distilbert-base-uncased'):
-        model = FineTuneLLM_Distilbert(num_classes=num_classes, model_name=model_name,
-                                       freeze_pretrained_params=freeze_pretrained_params)
-    else:
-        ValueError(f"Model Name {model_name} unsupported.")
+    model = FineTuneLLM(model_name=model_name, num_classes=num_classes,
+                        do_layer_freeze=do_layer_freeze)
 
     trainer = pl.Trainer(max_epochs=100, callbacks=[checkpoint_callback, early_stop_callback], logger=tb_logger,
                          log_every_n_steps=50)
