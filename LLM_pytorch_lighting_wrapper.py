@@ -6,9 +6,10 @@ import torch
 from torch.optim import AdamW
 import lightning as pl
 
-from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
+from transformers import (DistilBertTokenizer, DistilBertForSequenceClassification, BertForSequenceClassification,
+                          BertTokenizer, RobertaTokenizer, RobertaModel)
 
-from torch_utils import freeze_layers
+from torch_utils import freeze_layers, get_model_size
 from utils.torch_utils import tensor_to_numpy, average_round_metric
 
 # NB: Speed up processing for negligible loss of accuracy. Verify acceptable accuracy for a production use case
@@ -108,6 +109,26 @@ class FineTuneLLM_Distilbert(FineTuneLLM):
                                                      tokenizer=tokenizer)
 
 
+class FineTuneLLM_Bert(FineTuneLLM):
+    def __init__(self, num_classes, model_name='bert-base-uncased', tokenizer='bert-base-uncased',
+                 device='cuda:0', learning_rate=1e-6):
+        if "bert" not in model_name or "distil" in model_name or "roberta" in model_name:
+            raise ValueError(f"Wrong initialization class for model name {model_name}")
+
+        # Full version of Bert
+        if model_name == 'bert-base-uncased':
+            model = BertForSequenceClassification.from_pretrained(model_name, num_labels=num_classes)
+        else:
+            raise NotImplementedError()
+
+        if tokenizer == 'bert-base-uncased':
+            tokenizer = BertTokenizer.from_pretrained(tokenizer)
+        else:
+            raise NotImplementedError()
+        super(FineTuneLLM_Bert, self).__init__(device=device, learning_rate=learning_rate, model=model,
+                                                     tokenizer=tokenizer)
+
+
 def model_setup(save_dir, num_classes, model_name='distilbert-base-uncased', freeze_pretrained_params=True):
     model_name_clean = model_name.split('\\')[-1]
     checkpoint_callback = ModelCheckpoint(dirpath=save_dir,
@@ -121,6 +142,7 @@ def model_setup(save_dir, num_classes, model_name='distilbert-base-uncased', fre
                                        freeze_pretrained_params=freeze_pretrained_params)
     else:
         ValueError(f"Model Name {model_name} unsupported.")
+    _ = get_model_size(model)
 
     trainer = pl.Trainer(max_epochs=100, callbacks=[checkpoint_callback, early_stop_callback], logger=tb_logger,
                          log_every_n_steps=50)
