@@ -142,7 +142,6 @@ def model_setup(save_dir, num_classes, model_name='distilbert-base-uncased', fre
                                        freeze_pretrained_params=freeze_pretrained_params)
     else:
         ValueError(f"Model Name {model_name} unsupported.")
-    _ = get_model_size(model)
 
     trainer = pl.Trainer(max_epochs=100, callbacks=[checkpoint_callback, early_stop_callback], logger=tb_logger,
                          log_every_n_steps=50)

@@ -53,12 +53,11 @@ def predict_tokenized_classification(model: torch.nn.Module, test_dataloader: Da
     return preds
 
 
-def freeze_layers(layers_to_freeze: list, model: torch.nn.Module) -> torch.nn.Module:
+def freeze_layers(layers_keep_training: list, model: torch.nn.Module) -> torch.nn.Module:
     for param_name, param in model.named_parameters():
-        if endswith_list(param_name, layers_to_freeze):
+        if endswith_list(param_name, layers_keep_training):
             param.requires_grad = True
         else:
-            print('Kept parameter trainable: ' + param_name)
             param.requires_grad = False
     return model
 
@@ -68,22 +67,22 @@ def unfreeze_layers(model: torch.nn.Module, layers_to_unfreeze: Union[list, str]
         if layers_to_unfreeze == 'all' or endswith_list(param_name, layers_to_unfreeze):
             param.requires_grad = True
         else:
-            print('Kept parameter trainable: ' + param_name)
             param.requires_grad = False
     return model
 
 
-def get_frozen_layers(model: torch.nn.Module) -> tuple[list[str], list[str]]:
-    trainable = list()
-    frozen = list()
+def get_frozen_layers(model: torch.nn.Module, print_results=False) -> dict:
+    layers = {'trainable': list(), 'frozen': list()}
     for param_name, param in model.named_parameters():
         if param.requires_grad:
-            print(f"{param_name}: Trainable")
-            trainable.append(param_name)
+            layers['trainable'].append(param_name)
         else:
-            print(f"{param_name}: Frozen")
-            frozen.append(param_name)
-    return trainable, frozen
+            layers['frozen'].append(param_name)
+
+    if print_results:
+        print(f"Frozen layers: {layers['frozen']}")
+        print(f"Trainable layers: {layers['trainable']}")
+    return layers
 
 
 def get_model_size_mb(model: torch.nn.Module) -> int:

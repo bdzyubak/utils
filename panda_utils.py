@@ -40,10 +40,6 @@ def set_display_rows_cols(max_rows: int = 20, max_columns: int = 20, max_width: 
 def do_train_val_test_split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     df_train, df_test_val = train_test_split(df, train_size=0.6)
     df_val, df_test = train_test_split(df_test_val, train_size=0.5)
-    train_val_overlap = [id for id in list(df_train.index) if id in list(df_val.index)]
-    val_test_overlap = [id for id in list(df_val.index) if id in list(df_test.index)]
-    if train_val_overlap or val_test_overlap:
-        raise RuntimeError('Train/val/test sets have overlap!')
     return df_test, df_train, df_val
 
 
