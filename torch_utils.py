@@ -54,11 +54,16 @@ def predict_tokenized_classification(model: torch.nn.Module, test_dataloader: Da
 
 
 def freeze_layers(layers_keep_training: list, model: torch.nn.Module) -> torch.nn.Module:
+    params_to_train = list()
     for param_name, param in model.named_parameters():
         if endswith_list(param_name, layers_keep_training):
             param.requires_grad = True
+            params_to_train.append(param_name)
         else:
             param.requires_grad = False
+    params_missing_from_net = [name for name in layers_keep_training if name not in params_to_train]
+    if params_missing_from_net:
+        raise ValueError(f"Not all specified parameters were present in the network {params_missing_from_net}")
     return model
 
 

@@ -7,7 +7,7 @@ from torch.optim import AdamW
 import lightning as pl
 
 from transformers import (DistilBertTokenizer, DistilBertForSequenceClassification, BertForSequenceClassification,
-                          BertTokenizer, RobertaTokenizer, RobertaModel)
+                          BertTokenizer, RobertaTokenizer, RobertaModel, AutoModelForCausalLM, AutoTokenizer)
 
 from torch_utils import freeze_layers, get_model_size
 from utils.torch_utils import tensor_to_numpy, average_round_metric
@@ -16,7 +16,9 @@ from utils.torch_utils import tensor_to_numpy, average_round_metric
 torch.set_float32_matmul_precision('medium')
 torch.backends.cudnn.allow_tf32 = True
 
-supported_models = ['distilbert-base-uncased', 'bert-base-uncased']
+supported_models = {'distilbert': 'distilbert-base-uncased', 'bert': 'bert-base-uncased',
+                    'roberta': 'FacebookAI/roberta-base', 'llama': 'TheBloke/llama-2-70b-Guanaco-QLoRA-fp16'}
+
 
 
 class FineTuneLLM(pl.LightningModule):
@@ -30,14 +32,22 @@ class FineTuneLLM(pl.LightningModule):
     def set_up_model_and_tokenizer(self, device, do_layer_freeze, model_name, num_classes):
         check_model_supported(model_name)
         # TODO: explore swapping tokenizers. For now, use native
-        if model_name.startswith('distilbert-base-uncased'):
-            model = DistilBertForSequenceClassification.from_pretrained(model_name, num_labels=num_classes)
+        if model_name == 'distilbert':
+            model = DistilBertForSequenceClassification.from_pretrained(supported_models['distilbert'], num_labels=num_classes)
             fine_tune_head = ['classifier.bias', 'classifier.weight', 'pre_classifier.bias', 'pre_classifier.weight']
-        elif model_name.startswith('bert-base-uncased'):
-            model = BertForSequenceClassification.from_pretrained(model_name, num_labels=num_classes)
-            fine_tune_head = ['classifier.bias', 'classifier.weight', 'pre_classifier.bias', 'pre_classifier.weight']
+        elif model_name == 'bert':
+            model = BertForSequenceClassification.from_pretrained(supported_models['bert'], num_labels=num_classes)
+            fine_tune_head = ['classifier.bias', 'classifier.weight']
+        elif model_name == 'roberta':
+            raise NotImplementedError(f"Support for the model {model_name} has not been implemented.")
+            model = RobertaModel.from_pretrained(supported_models['roberta'],
+                                                 num_labels=num_classes)
+            fine_tune_head = ['pooler.dense.bias', 'pooler.dense.weight']
+        elif model_name.lower() == 'llama':
+            model = AutoModelForCausalLM.from_pretrained(supported_models['llama'],
+                                                         num_classes=num_classes)
         else:
-            raise NotImplementedError()
+            raise NotImplementedError(f"Support for the model {model_name} has not been implemented.")
 
         self.model = model
         if do_layer_freeze:
@@ -101,10 +111,14 @@ def check_model_supported(model_name):
 
 def tokenizer_setup(tokenizer_name):
     check_model_supported(tokenizer_name)
-    if tokenizer_name.startswith('distilbert-base-uncased'):
-        tokenizer = DistilBertTokenizer.from_pretrained(tokenizer_name)
-    elif tokenizer_name.startswith('bert-base-uncased'):
-        tokenizer = BertTokenizer.from_pretrained(tokenizer_name)
+    if tokenizer_name == 'distilbert':
+        tokenizer = DistilBertTokenizer.from_pretrained(supported_models['distilbert'])
+    elif tokenizer_name == 'bert':
+        tokenizer = BertTokenizer.from_pretrained(supported_models['bert'])
+    elif tokenizer_name.startswith('roberta'):
+        tokenizer = RobertaTokenizer.from_pretrained(supported_models['roberta'])
+    elif tokenizer_name.startswith('llama'):
+        tokenizer = AutoTokenizer.from_pretrained(supported_models['llama'])
     else:
         raise NotImplementedError()
     return tokenizer
