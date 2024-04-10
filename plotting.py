@@ -16,7 +16,8 @@ def set_plotting_defaults():
     sns.set()
 
 
-# Runs when anything is imported from this module. Import set_plotting_defaults() if you will just be plotting in the script
+# Runs when anything is imported from this module. Import set_plotting_defaults() if you will just be plotting in the
+# script
 set_plotting_defaults()
 
 

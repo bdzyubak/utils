@@ -5,6 +5,7 @@ from sklearn.metrics import accuracy_score
 import torch
 from torch.optim import AdamW
 import lightning as pl
+import mlflow
 
 from transformers import (DistilBertTokenizer, DistilBertForSequenceClassification, BertForSequenceClassification,
                           BertTokenizer, RobertaTokenizer, RobertaModel, AutoModelForCausalLM, AutoTokenizer)
@@ -21,12 +22,11 @@ supported_models = {'distilbert': 'distilbert-base-uncased', 'bert': 'bert-base-
 
 
 class FineTuneLLM(pl.LightningModule):
-    def __init__(self, model_name, num_classes, device='cuda:0', learning_rate=1e-6, do_layer_freeze=True):
+    def __init__(self, model_name, num_classes, device='cuda:0', learning_rate=5e-5, do_layer_freeze=True):
         super(FineTuneLLM, self).__init__()
         self.set_up_model_and_tokenizer(device, do_layer_freeze, model_name, num_classes)
 
         self.learning_rate = learning_rate
-        # self.save_hyperparameters()
 
     def set_up_model_and_tokenizer(self, device, do_layer_freeze, model_name, num_classes):
         check_model_supported(model_name)
@@ -34,15 +34,15 @@ class FineTuneLLM(pl.LightningModule):
         if model_name == 'distilbert':
             model = DistilBertForSequenceClassification.from_pretrained(supported_models['distilbert'],
                                                                         num_labels=num_classes)
-            fine_tune_head = ['classifier.bias', 'classifier.weight', 'pre_classifier.bias', 'pre_classifier.weight']
+            self.fine_tune_head = ['classifier.bias', 'classifier.weight', 'pre_classifier.bias', 'pre_classifier.weight']
         elif model_name == 'bert':
             model = BertForSequenceClassification.from_pretrained(supported_models['bert'], num_labels=num_classes)
-            fine_tune_head = ['classifier.bias', 'classifier.weight']
+            self.fine_tune_head = ['classifier.bias', 'classifier.weight']
         elif model_name == 'roberta':
             raise NotImplementedError(f"Trainer needs to pass arguments differently. labels keyword not found.")
             model = RobertaModel.from_pretrained(supported_models['roberta'],
                                                  num_labels=num_classes)
-            fine_tune_head = ['pooler.dense.bias', 'pooler.dense.weight']
+            self.fine_tune_head = ['pooler.dense.bias', 'pooler.dense.weight']
         elif model_name.lower() == 'llama':
             raise NotImplementedError(f"Not tested.")
             model = AutoModelForCausalLM.from_pretrained(supported_models['llama'],
@@ -52,7 +52,8 @@ class FineTuneLLM(pl.LightningModule):
 
         self.model = model
         if do_layer_freeze:
-            self.model = freeze_layers(fine_tune_head, self.model)
+            self.model = freeze_layers(self.fine_tune_head, self.model)
+            mlflow.log_param("Freeze layers except", self.fine_tune_head)
         self.model.to(device)
 
     def forward(self, input_ids, attention_mask, labels=None):
