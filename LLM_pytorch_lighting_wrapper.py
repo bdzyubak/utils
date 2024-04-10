@@ -20,7 +20,6 @@ supported_models = {'distilbert': 'distilbert-base-uncased', 'bert': 'bert-base-
                     'roberta': 'FacebookAI/roberta-base', 'llama': 'TheBloke/llama-2-70b-Guanaco-QLoRA-fp16'}
 
 
-
 class FineTuneLLM(pl.LightningModule):
     def __init__(self, model_name, num_classes, device='cuda:0', learning_rate=1e-6, do_layer_freeze=True):
         super(FineTuneLLM, self).__init__()
@@ -33,17 +32,19 @@ class FineTuneLLM(pl.LightningModule):
         check_model_supported(model_name)
         # TODO: explore swapping tokenizers. For now, use native
         if model_name == 'distilbert':
-            model = DistilBertForSequenceClassification.from_pretrained(supported_models['distilbert'], num_labels=num_classes)
+            model = DistilBertForSequenceClassification.from_pretrained(supported_models['distilbert'],
+                                                                        num_labels=num_classes)
             fine_tune_head = ['classifier.bias', 'classifier.weight', 'pre_classifier.bias', 'pre_classifier.weight']
         elif model_name == 'bert':
             model = BertForSequenceClassification.from_pretrained(supported_models['bert'], num_labels=num_classes)
             fine_tune_head = ['classifier.bias', 'classifier.weight']
         elif model_name == 'roberta':
-            raise NotImplementedError(f"Support for the model {model_name} has not been implemented.")
+            raise NotImplementedError(f"Trainer needs to pass arguments differently. labels keyword not found.")
             model = RobertaModel.from_pretrained(supported_models['roberta'],
                                                  num_labels=num_classes)
             fine_tune_head = ['pooler.dense.bias', 'pooler.dense.weight']
         elif model_name.lower() == 'llama':
+            raise NotImplementedError(f"Not tested.")
             model = AutoModelForCausalLM.from_pretrained(supported_models['llama'],
                                                          num_classes=num_classes)
         else:
@@ -123,6 +124,7 @@ def tokenizer_setup(tokenizer_name):
         raise NotImplementedError()
     return tokenizer
 
+
 # def qc_requested_models_supported(model_names):
 #     models_unsupported = list()
 #     for model_name in model_names:
@@ -137,7 +139,7 @@ def tokenizer_setup(tokenizer_name):
 def model_setup(save_dir, num_classes, model_name='distilbert-base-uncased', do_layer_freeze=True):
     model_name_clean = model_name.split('\\')[-1]
     checkpoint_callback = ModelCheckpoint(dirpath=save_dir,
-                                          filename=model_name_clean+"-{epoch:02d}-{val_loss:.2f}",
+                                          filename=model_name_clean + "-{epoch:02d}-{val_loss:.2f}",
                                           save_top_k=1,
                                           monitor="val_acc")
     early_stop_callback = EarlyStopping(monitor="val_acc", min_delta=0.0001, patience=5, verbose=False, mode="max")
