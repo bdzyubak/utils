@@ -1,9 +1,13 @@
 import numpy as np
-import torch
 from typing import Union
 
+import torch
+from torch.utils.data import DataLoader
 
-def get_tensor_size(data: Union[torch.Tensor, dict]):
+from os_utils import endswith_list
+
+
+def get_tensor_size(data: Union[torch.Tensor, dict]) -> float:
     if isinstance(data, dict):
         data = data['data']  # Try to get tensor from typical loader object
 
@@ -13,7 +17,7 @@ def get_tensor_size(data: Union[torch.Tensor, dict]):
     return size_in_mb
 
 
-def set_cap_gpu_memory(gpu_memory_target_in_gb):
+def set_cap_gpu_memory(gpu_memory_target_in_gb: float) -> float:
     gpu_memory_total = round(torch.cuda.get_device_properties(0).total_memory / 1000 / 1000 / 1000, 1)
     if gpu_memory_target_in_gb > gpu_memory_total:
         print(f'WARNING: Selected/default GPU memory request {gpu_memory_target_in_gb} GB is greater than the GPU '
@@ -23,18 +27,19 @@ def set_cap_gpu_memory(gpu_memory_target_in_gb):
     return gpu_memory_target_in_gb
 
 
-def tensor_to_numpy(tensor: torch.Tensor):
+def tensor_to_numpy(tensor: torch.Tensor) -> np.ndarray:
     if not isinstance(tensor, torch.Tensor):
         print(f'The input is not a tensor. Returning self')
         return tensor
     return tensor.detach().cpu().numpy()
 
 
-def average_round_metric(metric: list, decimal_points=3):
+def average_round_metric(metric: list, decimal_points: int = 3) -> float:
     return round(sum(metric) / len(metric), decimal_points)
 
 
-def predict_tokenized_classification(model, test_dataloader, device='cuda:0'):
+def predict_tokenized_classification(model: torch.nn.Module, test_dataloader: DataLoader,
+                                     device: Union[str, torch.device] = 'cuda:0') -> list:
     model.to(device)
     model.eval()
     preds = list()
@@ -48,7 +53,44 @@ def predict_tokenized_classification(model, test_dataloader, device='cuda:0'):
     return preds
 
 
-def get_model_size_mb(model):
+def freeze_layers(layers_keep_training: list, model: torch.nn.Module) -> torch.nn.Module:
+    params_to_train = list()
+    for param_name, param in model.named_parameters():
+        if endswith_list(param_name, layers_keep_training):
+            param.requires_grad = True
+            params_to_train.append(param_name)
+        else:
+            param.requires_grad = False
+    params_missing_from_net = [name for name in layers_keep_training if name not in params_to_train]
+    if params_missing_from_net:
+        raise ValueError(f"Not all specified parameters were present in the network {params_missing_from_net}")
+    return model
+
+
+def unfreeze_layers(model: torch.nn.Module, layers_to_unfreeze: Union[list, str] = 'all') -> torch.nn.Module:
+    for param_name, param in model.named_parameters():
+        if layers_to_unfreeze == 'all' or endswith_list(param_name, layers_to_unfreeze):
+            param.requires_grad = True
+        else:
+            param.requires_grad = False
+    return model
+
+
+def get_frozen_layers(model: torch.nn.Module, print_results=False) -> dict:
+    layers = {'trainable': list(), 'frozen': list()}
+    for param_name, param in model.named_parameters():
+        if param.requires_grad:
+            layers['trainable'].append(param_name)
+        else:
+            layers['frozen'].append(param_name)
+
+    if print_results:
+        print(f"Frozen layers: {layers['frozen']}")
+        print(f"Trainable layers: {layers['trainable']}")
+    return layers
+
+
+def get_model_size_mb(model: torch.nn.Module) -> int:
     param_size = 0
     for param in model.parameters():
         param_size += param.nelement() * param.element_size()
@@ -61,7 +103,7 @@ def get_model_size_mb(model):
     return size_all_mb
 
 
-def get_model_param_num(model):
+def get_model_param_num(model: torch.nn.Module) -> tuple[int, int]:
     param_number = 0
     param_number_trainable = 0
     for param in model.parameters():
@@ -75,7 +117,7 @@ def get_model_param_num(model):
     return param_number, param_number_trainable
 
 
-def get_model_size(model):
+def get_model_size(model: torch.nn.Module) -> tuple[int, int, int]:
     size_all_mb = get_model_size_mb(model)
     param_number, param_number_trainable = get_model_param_num(model)
     return size_all_mb, param_number, param_number_trainable

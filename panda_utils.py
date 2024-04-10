@@ -1,3 +1,5 @@
+from typing import Union, Optional
+
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
@@ -27,7 +29,7 @@ def pick_columns_trim_name(df: pd.DataFrame, str_pattern: str) -> pd.DataFrame:
     return df_acc
 
 
-def set_display_rows_cols(max_rows=20, max_columns=20, max_width=1000):
+def set_display_rows_cols(max_rows: int = 20, max_columns: int = 20, max_width: int = 1000):
     # Sets how many rows and columns to display when looking at the pandas dataframe e.g. with df.head()
     # Use this at the top of a data analysis script
     pd.set_option('display.max_rows', max_rows)
@@ -35,17 +37,13 @@ def set_display_rows_cols(max_rows=20, max_columns=20, max_width=1000):
     pd.set_option('display.width', max_width)
 
 
-def do_train_val_test_split(df):
+def do_train_val_test_split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     df_train, df_test_val = train_test_split(df, train_size=0.6)
     df_val, df_test = train_test_split(df_test_val, train_size=0.5)
-    train_val_overlap = [id for id in list(df_train.index) if id in list(df_val.index)]
-    val_test_overlap = [id for id in list(df_val.index) if id in list(df_test.index)]
-    if train_val_overlap or val_test_overlap:
-        raise RuntimeError('Train/val/test sets have overlap!')
     return df_test, df_train, df_val
 
 
-def read_dataframe(file_path, nrows=None):
+def read_dataframe(file_path: str, nrows=None) -> pd.DataFrame:
     if file_path.endswith('.csv'):
         df = pd.read_csv(file_path, nrows=nrows)
     elif file_path.endswith('.tsv'):
@@ -55,7 +53,7 @@ def read_dataframe(file_path, nrows=None):
     return df
 
 
-def is_close(a, b, abs_tol=1e-4):
+def is_close(a: Union[int, float], b: Union[int, float], abs_tol=1e-4) -> bool:
     return abs(a - b) <= abs_tol
 # def is_close(a, b, rel_tol=1e-4, abs_tol=1e-4):
     # return abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)

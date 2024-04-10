@@ -74,3 +74,8 @@ def filename_to_title(file_path: Union[Path, str]):
     words = [name[0].upper()+name[1:] for name in filename.split(' ')]
     return ' '.join(words)
 
+
+def endswith_list(string: str, suffix_list: list) -> bool:
+    # Check if string ends with any suffix in list
+    ends_with_any = list(filter(string.endswith, suffix_list)) != []
+    return ends_with_any
