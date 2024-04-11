@@ -1,8 +1,11 @@
+from typing import Union, Optional
+
 from lightning.pytorch import loggers
-from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
+from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 from sklearn.metrics import accuracy_score
 
 import torch
+import torch.nn as nn
 from torch.optim import AdamW
 import lightning as pl
 import mlflow
@@ -10,7 +13,7 @@ import mlflow
 from transformers import (DistilBertTokenizer, DistilBertForSequenceClassification, BertForSequenceClassification,
                           BertTokenizer, RobertaTokenizer, RobertaModel, AutoModelForCausalLM, AutoTokenizer)
 
-from torch_utils import freeze_layers, get_model_size
+from torch_utils import clear_layers_replace_dropout_rate, freeze_layers, get_model_size
 from utils.torch_utils import tensor_to_numpy, average_round_metric
 
 # NB: Speed up processing for negligible loss of accuracy. Verify acceptable accuracy for a production use case
@@ -21,9 +24,30 @@ supported_models = {'distilbert': 'distilbert-base-uncased', 'bert': 'bert-base-
                     'roberta': 'FacebookAI/roberta-base', 'llama': 'TheBloke/llama-2-70b-Guanaco-QLoRA-fp16'}
 
 
-class FineTuneLLM(pl.LightningModule):
-    def __init__(self, model_name, num_classes, device='cuda:0', learning_rate=5e-5, do_layer_freeze=True):
-        super(FineTuneLLM, self).__init__()
+class FineTuneLLMAsClassifier(pl.LightningModule):
+    def __init__(self, model_name: str, num_classes: int, device: str = 'cuda:0', learning_rate: float = 5e-5,
+                 do_layer_freeze: bool = True, extra_class_layers: Optional[Union[int, list]] = None):
+        """
+        A Pytorch Lightning wrapper for supported LLM models for classification to simplify training and integrate with
+        MLFlow
+        Args:
+            model_name: Name of supported model. Check supported_models on top of this module
+            num_classes: The number of output classes to classify. Determines classifier head connections
+            device: 'cpu' or 'cuda:[number]'
+            learning_rate: The optimizer's starting learning rate
+            do_layer_freeze: Freeze all layers except default and added classifier layers. Gets very high train accuracy
+            but poor, decreasing val accuracy if off. The checkpointer will still save the best val epoch, so this is
+            definitely an option. do_layer_freeze=False trains much faster due to small number of epochs, and need to
+            propagate through all layers, even when do_layer_freeze=True
+            extra_class_layers: List of connections for fully connected layers to add, or integer number of layers
+            to add with default number of connections
+        """
+
+        super(FineTuneLLMAsClassifier, self).__init__()
+        if isinstance(extra_class_layers, int):
+            # Fill with default number of connections. Otherwise, expect list of connections
+            self.extra_class_layers = [512] * extra_class_layers
+        self.extra_class_layers = extra_class_layers
         self.set_up_model_and_tokenizer(device, do_layer_freeze, model_name, num_classes)
 
         self.learning_rate = learning_rate
@@ -31,10 +55,13 @@ class FineTuneLLM(pl.LightningModule):
     def set_up_model_and_tokenizer(self, device, do_layer_freeze, model_name, num_classes):
         check_model_supported(model_name)
         # TODO: explore swapping tokenizers. For now, use native
+        # WARNING: The fine_tune_head layers must be in order, as the input_features are used to replace them when
+        # extra_class_layers is used
         if model_name == 'distilbert':
             model = DistilBertForSequenceClassification.from_pretrained(supported_models['distilbert'],
                                                                         num_labels=num_classes)
-            self.fine_tune_head = ['classifier.bias', 'classifier.weight', 'pre_classifier.bias', 'pre_classifier.weight']
+            self.fine_tune_head = ['pre_classifier.bias', 'pre_classifier.weight', 'classifier.bias',
+                                   'classifier.weight']
         elif model_name == 'bert':
             model = BertForSequenceClassification.from_pretrained(supported_models['bert'], num_labels=num_classes)
             self.fine_tune_head = ['classifier.bias', 'classifier.weight']
@@ -47,17 +74,43 @@ class FineTuneLLM(pl.LightningModule):
             raise NotImplementedError(f"Not tested.")
             model = AutoModelForCausalLM.from_pretrained(supported_models['llama'],
                                                          num_classes=num_classes)
+            last_layer = ''  # Add this
         else:
             raise NotImplementedError(f"Support for the model {model_name} has not been implemented.")
-
         self.model = model
+
+        layers_to_replace = self.fine_tune_head + ['dropout']
+        model, self.fine_tune_head = self.replace_layers_with_fc(self.model, self.fine_tune_head,
+                                                                 self.extra_class_layers)
+
         if do_layer_freeze:
             self.model = freeze_layers(self.fine_tune_head, self.model)
-            mlflow.log_param("Freeze layers except", self.fine_tune_head)
+            mlflow.log_param("Freeze layers except", fine_tune_head)
         self.model.to(device)
 
+    def replace_layers_with_fc(model, layers_to_replace, extra_class_layers, dropout_rate=0.1):
+        # Sanitize inputs in case layers_to_replace specifies weights and biases
+        layers_to_replace = list(set([name.replace('.weight', '').replace('.bias', '')
+                                 for name in layers_to_replace]))
+        input_features = clear_layers_replace_dropout_rate(model, layers_to_replace,
+                                                                       dropout_rate=dropout_rate)
+
+        if extra_class_layers:
+            model.extra_classifiers = nn.Sequential(nn.Linear(input_features, extra_class_layers[0]))
+
+            layer_range = range(len(extra_class_layers[1:]))
+            for layer_ind in layer_range:  # Skipped if range is empty
+                model.extra_classifiers += nn.Linear(extra_class_layers[layer_ind - 1],
+                                                          extra_class_layers[layer_ind])
+                model_extra_classifiers += nn.Dropout(p=dropout_rate)
+
+        return model, new_layer_names
+
     def forward(self, input_ids, attention_mask, labels=None):
-        return self.model(input_ids, attention_mask=attention_mask, labels=labels)
+        x = self.model(input_ids, attention_mask=attention_mask, labels=labels)
+        if self.extra_class_layers:
+            x = self.model.extra_classifiers(x)
+        return x
 
     def on_train_epoch_start(self):
         self.train_loss = list()
@@ -103,7 +156,8 @@ class FineTuneLLM(pl.LightningModule):
 
     def configure_optimizers(self):
         self.optimizer = AdamW(self.parameters(), lr=self.learning_rate)
-        return self.optimizer
+        self.lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=3, threshold=1e-3)
+        return {"optimizer": self.optimizer, "lr_scheduler": self.lr_scheduler, "monitor": "val_acc"}
 
 
 def check_model_supported(model_name):
@@ -137,17 +191,19 @@ def tokenizer_setup(tokenizer_name):
 #         raise ValueError(f'The following models are not supported {models_unsupported}')
 
 
-def model_setup(save_dir, num_classes, model_name='distilbert-base-uncased', do_layer_freeze=True):
+def model_setup(save_dir, num_classes, model_name='distilbert-base-uncased', do_layer_freeze=True,
+                extra_class_layers=None):
     model_name_clean = model_name.split('\\')[-1]
     checkpoint_callback = ModelCheckpoint(dirpath=save_dir,
                                           filename=model_name_clean + "-{epoch:02d}-{val_loss:.2f}",
                                           save_top_k=1,
                                           monitor="val_acc")
     early_stop_callback = EarlyStopping(monitor="val_acc", min_delta=0.0001, patience=5, verbose=False, mode="max")
+    lr_monitor = LearningRateMonitor(logging_interval='step')
     tb_logger = loggers.TensorBoardLogger(save_dir=save_dir)
-    model = FineTuneLLM(model_name=model_name, num_classes=num_classes,
-                        do_layer_freeze=do_layer_freeze)
+    model = FineTuneLLMAsClassifier(model_name=model_name, num_classes=num_classes, do_layer_freeze=do_layer_freeze,
+                                    extra_class_layers=extra_class_layers)
 
-    trainer = pl.Trainer(max_epochs=100, callbacks=[checkpoint_callback, early_stop_callback], logger=tb_logger,
-                         log_every_n_steps=50)
+    trainer = pl.Trainer(max_epochs=100, callbacks=[checkpoint_callback, early_stop_callback, lr_monitor],
+                         logger=tb_logger, log_every_n_steps=50)
     return model, trainer

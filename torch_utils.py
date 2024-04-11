@@ -1,7 +1,8 @@
 import numpy as np
-from typing import Union
+from typing import Union, Optional
 
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from os_utils import endswith_list
@@ -121,3 +122,44 @@ def get_model_size(model: torch.nn.Module) -> tuple[int, int, int]:
     size_all_mb = get_model_size_mb(model)
     param_number, param_number_trainable = get_model_param_num(model)
     return size_all_mb, param_number, param_number_trainable
+
+
+def clear_layers_replace_dropout_rate(model: torch.nn.Module, layers_to_fix: str,
+                                      dropout_rate: Optional[Union[float, list]] = None):
+    if isinstance(layers_to_fix, str):
+        layers_to_fix = list(layers_to_fix)
+    layers_to_clear = [name for name in layers_to_fix if 'dropout' not in name]
+    input_features = getattr(model, layers_to_clear[0]).in_features.shape[0]
+    clear_layers(model, layers_to_clear)
+
+    if dropout_rate is not None:
+        layers_to_update_dropout = [name for name in model.named_parameters() if 'dropout' in name]
+        if len(layers_to_update_dropout) != len(dropout_rate):
+            raise ValueError(f'Provide dropout rate as a single float, or match the number of dropout layers in model')
+        update_dropout_rate(model, layer_names=layers_to_update_dropout, dropout_rate=dropout_rate)
+    return input_features
+
+
+def clear_layers(model: torch.nn.Module, layer_names: Union[str, list]):
+    # Make one or more layers not do anything. This is a way to delete layers without having to update forward()
+    # To avoid having to overwrite the model forward method, set the layer to a passthrough (doesn't do anything)
+    if isinstance(layer_names, str):
+        layer_names = list(layer_names)
+    for layer_name in layer_names:
+        setattr(model, layer_name, Identity())
+
+
+def update_dropout_rate(model: torch.nn.Module, layer_names: Union[str, list], dropout_rate: float):
+    # Update dropout for one or more layers
+    if isinstance(layer_names, str):
+        layer_names = list(layer_names)
+    for layer_name in layer_names:
+        setattr(model, layer_name, nn.Dropout(p=dropout_rate))
+
+
+class Identity(nn.Module):
+    def __init__(self):
+        super(Identity, self).__init__()
+
+    def forward(self, x):
+        return x
