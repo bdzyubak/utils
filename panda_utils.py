@@ -54,6 +54,34 @@ def read_dataframe(file_path: str, nrows=None) -> pd.DataFrame:
 
 
 def is_close(a: Union[int, float], b: Union[int, float], abs_tol=1e-4) -> bool:
-    return abs(a - b) <= abs_tol
-# def is_close(a, b, rel_tol=1e-4, abs_tol=1e-4):
+    # def is_close(a, b, rel_tol=1e-4, abs_tol=1e-4):
     # return abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
+    return abs(a - b) <= abs_tol
+
+
+def time_series_train_val_test_split(df, val_ratio=0.15, test_ratio=0.15):
+    # For time series analysis, use past info to predict the future as the validation approach
+    # Split features and preds upfront to avoid possibility of targets bleeding into training, or data splits into
+    # each other
+    train_split_end = round(len(df)*(1 - (val_ratio + test_ratio)))
+    val_split_end = round(len(df)*(1-test_ratio)) if test_ratio else len(df)
+
+    train = df.iloc[:train_split_end]
+    val = df.iloc[train_split_end:val_split_end]
+    test = df.iloc[val_split_end:]  # Empty if no test_ratio
+
+    return train, val, test
+
+
+def split_features_and_labels(train: pd.DataFrame, val: pd.DataFrame, features: list, target: str, test=None):
+    X_train = train[features]
+    y_train = train[target]
+    X_val = val[features]
+    y_val = val[target]
+    if test is not None:
+        X_test = test[features]
+        y_test = test[target]
+    else:
+        X_test = None
+        y_test = None
+    return X_train, y_train, X_val, y_val, X_test, y_test
