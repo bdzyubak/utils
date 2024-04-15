@@ -8,6 +8,14 @@ from os_utils import endswith_list
 
 
 def get_tensor_size(data: Union[torch.Tensor, dict]) -> float:
+    """
+
+    Args:
+        data: A tensor or dataloader (dict) from which to get size size_in_mb
+
+    Returns:
+        Size of the tensor in memory
+    """
     if isinstance(data, dict):
         data = data['data']  # Try to get tensor from typical loader object
 
@@ -18,6 +26,14 @@ def get_tensor_size(data: Union[torch.Tensor, dict]) -> float:
 
 
 def set_cap_gpu_memory(gpu_memory_target_in_gb: float) -> float:
+    """
+    Args:
+        gpu_memory_target_in_gb: A GPU memory target to reserve. If not available, will warn and scale relative to
+        available memory
+
+    Returns:
+        Actual memory reserved
+    """
     gpu_memory_total = round(torch.cuda.get_device_properties(0).total_memory / 1000 / 1000 / 1000, 1)
     if gpu_memory_target_in_gb > gpu_memory_total:
         print(f'WARNING: Selected/default GPU memory request {gpu_memory_target_in_gb} GB is greater than the GPU '
@@ -28,6 +44,7 @@ def set_cap_gpu_memory(gpu_memory_target_in_gb: float) -> float:
 
 
 def tensor_to_numpy(tensor: torch.Tensor) -> np.ndarray:
+    # Wrapper to convert tensor to numpy
     if not isinstance(tensor, torch.Tensor):
         print(f'The input is not a tensor. Returning self')
         return tensor
@@ -35,11 +52,23 @@ def tensor_to_numpy(tensor: torch.Tensor) -> np.ndarray:
 
 
 def average_round_metric(metric: list, decimal_points: int = 3) -> float:
+    # A wrapper to average a metric calculated over time and return with given precision. Handled natively in Lightning
+    # using accumulate()
     return round(sum(metric) / len(metric), decimal_points)
 
 
 def predict_tokenized_classification(model: torch.nn.Module, test_dataloader: DataLoader,
                                      device: Union[str, torch.device] = 'cuda:0') -> list:
+    """
+    LLM inference runner to predict classification from a batch with tokens+attention mask
+    Args:
+        model: Fine-tuned LLM model class
+        test_dataloader: A dataloader with tokenized input_ids and attention_mask
+        device: Which GPU/cpu to run on
+
+    Returns:
+    Predicted classes for each case in test_loader
+    """
     model.to(device)
     model.eval()
     preds = list()

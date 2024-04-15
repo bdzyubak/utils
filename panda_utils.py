@@ -23,7 +23,7 @@ def pick_columns_trim_name(df: pd.DataFrame, str_pattern: str) -> pd.DataFrame:
                 break
         if left == right:
             raise ValueError('Change pattern - all characters post pattern are not alphanumeric and were dropped.')
-        map_dict[column] = column_reformatted[left:(right+1)]
+        map_dict[column] = column_reformatted[left:(right + 1)]
 
     df_acc = df[columns].rename(columns=map_dict)
     return df_acc
@@ -44,6 +44,7 @@ def do_train_val_test_split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFram
 
 
 def read_dataframe(file_path: str, nrows=None) -> pd.DataFrame:
+    # A more generic wrapper to support csv and tsv reading. May be extended to other types like pickles
     if file_path.endswith('.csv'):
         df = pd.read_csv(file_path, nrows=nrows)
     elif file_path.endswith('.tsv'):
@@ -54,8 +55,7 @@ def read_dataframe(file_path: str, nrows=None) -> pd.DataFrame:
 
 
 def is_close(a: Union[int, float], b: Union[int, float], abs_tol=1e-4) -> bool:
-    # def is_close(a, b, rel_tol=1e-4, abs_tol=1e-4):
-    # return abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
+    # Evaluate whether one value is close to another within tolerance. Used for e.g. regression testing
     return abs(a - b) <= abs_tol
 
 
@@ -64,8 +64,8 @@ def time_series_train_val_test_split(df: pd.DataFrame, val_ratio: float = 0.15, 
     # Split features and preds upfront to avoid possibility of targets bleeding into training, or data splits into
     # each other
     if test_ratio is not None:
-        train_split_end = round(len(df)*(1 - (val_ratio + test_ratio)))
-        val_split_end = round(len(df)*(1-test_ratio))
+        train_split_end = round(len(df) * (1 - (val_ratio + test_ratio)))
+        val_split_end = round(len(df) * (1 - test_ratio))
     else:
         train_split_end = round(len(df) * (1 - val_ratio))
         val_split_end = len(df)
@@ -80,7 +80,10 @@ def time_series_train_val_test_split(df: pd.DataFrame, val_ratio: float = 0.15, 
 
 
 def split_features_and_labels_train_val(train: pd.DataFrame, val: pd.DataFrame, features: list, target: str,
-                              test: Optional[pd.DataFrame] = None) -> Union[tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame], tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]]:
+                                        test: Optional[pd.DataFrame] = None) -> Union[
+    tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame], tuple[
+        pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]]:
+    # Helper function to split train and val dataframes into X (features) and y (targets) for each set. test df is optional
     X_train, y_train = split_features_and_labels(train, features, target)
     X_val, y_val = split_features_and_labels(val, features, target)
     if test is not None:
@@ -90,22 +93,17 @@ def split_features_and_labels_train_val(train: pd.DataFrame, val: pd.DataFrame, 
     return X_train, y_train, X_val, y_val, X_test, y_test
 
 
-def split_features_and_labels(train: pd.DataFrame, features: list, target: str) -> tuple[pd.DataFrame, pd.DataFrame]:
-    X_train = train[features]
-    y_train = train[target]
+def split_features_and_labels(df: pd.DataFrame, features: list, target: str) -> tuple[pd.DataFrame, pd.Series]:
+    """
+    Split a dataframe into X (features) and y (labels)
+    Args:
+        df: Dataframe to split
+        features: List of column names to use as features. Can use a subest of columns
+        target: Name of target/label column to split off.
+
+    Returns:
+        A dataframe and series to use in sklearn.model.fit(X_train, y_train)
+    """
+    X_train = df[features]
+    y_train = df[target]
     return X_train, y_train
-
-    if val is not None:
-        X_val = val[features]
-        y_val = val[target]
-    else:
-        X_val = None
-        y_val = None
-
-    if test is not None:
-        X_test = test[features]
-        y_test = test[target]
-    else:
-        X_test = None
-        y_test = None
-    return X_train, y_train, X_val, y_val, X_test, y_test
