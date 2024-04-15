@@ -23,6 +23,7 @@ set_plotting_defaults()
 
 def lineplot(df: pd.DataFrame, save_file: Optional[Path] = None, xlabel: Optional[str] = None,
              ylabel: Optional[str] = None, legend_outside_plot: bool = True):
+    # An early version of convenience wrapper for lineplot
     plt.figure()
     color_palette = sns.color_palette()
     # Skip first column which is the index
@@ -45,6 +46,7 @@ def lineplot(df: pd.DataFrame, save_file: Optional[Path] = None, xlabel: Optiona
 
 
 def plot_tensorboard_logs(model_dir, model_version, title=None, log_type='lightning_logs'):
+    # A plotter for tensorboard logs. Not presently used due to switch to mlflow. May be deprecated
     reader = tbparse.SummaryReader(str(model_dir / log_type / model_version))
     df = reader.scalars
     # Deal with epoch being logged twice on train end and val end
