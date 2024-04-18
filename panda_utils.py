@@ -73,8 +73,7 @@ def time_series_train_val_test_split(df: pd.DataFrame, val_ratio: float = 0.15, 
     train = df.iloc[:train_split_end]
     val = df.iloc[train_split_end:val_split_end]
 
-    if test_ratio:
-        test = df.iloc[val_split_end:]  # Empty if no test_ratio
+    test = df.iloc[val_split_end:]  # Empty if no test_ratio
 
     return train, val, test
 
