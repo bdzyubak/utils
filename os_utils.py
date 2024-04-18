@@ -17,8 +17,9 @@ def run_command(command: str, verbose: bool = False) -> Tuple[int, str]:
     Returns:
         None
     """
-    output = subprocess.run(command, capture_output=True, text=True)
-    text_output = output.stdout
+
+    output = subprocess.run(command, capture_output=True)
+    text_output = output.stdout.decode()
     # Remove conda escape characters, if present
     ansi_cleaned = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
 
