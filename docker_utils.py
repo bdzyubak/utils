@@ -4,6 +4,8 @@ import requests
 
 
 def add_gcc_to_dockerfile(model_dir):
+    print(f"DEPRECATION WARNING: Dockerfiles are now stored in \\dockerfiles. Use those to build rather than modifying "
+          f"on the fly. ")
     with open(model_dir / 'Dockerfile', 'r') as f:
         lines = f.readlines()
 
