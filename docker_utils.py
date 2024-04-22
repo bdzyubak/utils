@@ -27,9 +27,9 @@ def convert_dataframe_to_json_for_docker(X: pd.DataFrame) -> dict:
     return X_json
 
 
-def post_json_get_preds(X_json):
+def post_json_get_preds(X_json, port='8000'):
     headers = {"content-type": "application/json", "Accept": "text/plain"}
-    response = requests.post("http://127.0.0.1:8000/invocations", data=X_json, headers=headers)
+    response = requests.post(f"http://127.0.0.1:{port}/invocations", data=X_json, headers=headers)
     preds_dict = json.loads(response.content)
     if response.status_code == 200:
         print('Successfully predicted using Docker container!')
