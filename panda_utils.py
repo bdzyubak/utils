@@ -64,16 +64,18 @@ def time_series_train_val_test_split(df: pd.DataFrame, val_ratio: float = 0.15, 
     # Split features and preds upfront to avoid possibility of targets bleeding into training, or data splits into
     # each other
     if test_ratio is not None:
-        train_split_end = round(len(df) * (1 - (val_ratio + test_ratio)))
-        val_split_end = round(len(df) * (1 - test_ratio))
+        train_split_end = 1 - val_ratio - test_ratio
+        val_split_end = 1 - test_ratio
     else:
-        train_split_end = round(len(df) * (1 - val_ratio))
-        val_split_end = len(df)
+        train_split_end = 1 - val_ratio
+        val_split_end = 1
 
-    train = df.iloc[:train_split_end]
-    val = df.iloc[train_split_end:val_split_end]
+    train_split_end_date = (df.index.min() + ((df.index.max() - df.index.min()) * train_split_end))
+    train = df[df.index <= train_split_end_date]
+    val_split_end_date = (df.index.min() + ((df.index.max() - df.index.min()) * val_split_end))
+    val = df[(df.index > train_split_end_date) & (df.index <= val_split_end_date)]
 
-    test = df.iloc[val_split_end:]  # Empty if no test_ratio
+    test = df[df.index > val_split_end_date]  # Empty if no test_ratio
 
     return train, val, test
 

@@ -17,8 +17,9 @@ def run_command(command: str, verbose: bool = False) -> Tuple[int, str]:
     Returns:
         None
     """
-    output = subprocess.run(command, capture_output=True, text=True)
-    text_output = output.stdout
+
+    output = subprocess.run(command, capture_output=True)
+    text_output = output.stdout.decode()
     # Remove conda escape characters, if present
     ansi_cleaned = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
 
@@ -130,3 +131,9 @@ def get_memory_use(code_point: str = '', log_to_mlflow: bool = False):
     if log_to_mlflow:
         mlflow.log_metric(f'memory_usage_{code_point}', memory_usage)
     return memory_usage
+
+
+def str_to_path(path: Union[str, Path]):
+    if isinstance(path, str):
+        path = Path(path)
+    return path
