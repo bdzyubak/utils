@@ -131,3 +131,9 @@ def get_memory_use(code_point: str = '', log_to_mlflow: bool = False):
     if log_to_mlflow:
         mlflow.log_metric(f'memory_usage_{code_point}', memory_usage)
     return memory_usage
+
+
+def str_to_path(path: Union[str, Path]):
+    if isinstance(path, str):
+        path = Path(path)
+    return path
