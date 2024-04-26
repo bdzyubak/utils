@@ -13,7 +13,7 @@ import mlflow
 from transformers import (DistilBertTokenizer, DistilBertForSequenceClassification, BertForSequenceClassification,
                           BertTokenizer, RobertaTokenizer, RobertaModel, AutoModelForCausalLM, AutoTokenizer)
 
-from torch_utils import clear_layers_replace_dropout_rate, freeze_layers, get_model_size
+from torch_utils import clear_layers, freeze_layers, get_model_size
 from utils.torch_utils import tensor_to_numpy, average_round_metric
 
 # NB: Speed up processing for negligible loss of accuracy. Verify acceptable accuracy for a production use case
@@ -88,23 +88,30 @@ class FineTuneLLMAsClassifier(pl.LightningModule):
             mlflow.log_param("Freeze layers except", fine_tune_head)
         self.model.to(device)
 
-    def replace_layers_with_fc(model, layers_to_replace, extra_class_layers, dropout_rate=0.1):
+    def replace_layers_with_fc(self, model, layers_to_replace, extra_class_layers, dropout_rate=0.1):
         # Sanitize inputs in case layers_to_replace specifies weights and biases
         layers_to_replace = list(set([name.replace('.weight', '').replace('.bias', '')
                                  for name in layers_to_replace]))
-        input_features = clear_layers_replace_dropout_rate(model, layers_to_replace,
-                                                                       dropout_rate=dropout_rate)
+        input_features = clear_layers(self.model, layers_to_replace)
 
         if extra_class_layers:
-            model.extra_classifiers = nn.Sequential(nn.Linear(input_features, extra_class_layers[0]))
-
+            classifier_layer_names = list()
+            extra_classifiers = nn.Sequential()
+            classifier_layer_names += 'extra_class0'
+            extra_classifiers.add_module(name=classifier_layer_names[-1], module=nn.Linear(input_features,
+                                                                          extra_class_layers[0]))
+            classifier_layer_names += 'extra_class_dropout0'
+            extra_classifiers.add_module(name=classifier_layer_names[-1], module=nn.Dropout(p=dropout_rate))
             layer_range = range(len(extra_class_layers[1:]))
-            for layer_ind in layer_range:  # Skipped if range is empty
-                model.extra_classifiers += nn.Linear(extra_class_layers[layer_ind - 1],
-                                                          extra_class_layers[layer_ind])
-                model_extra_classifiers += nn.Dropout(p=dropout_rate)
 
-        return model, new_layer_names
+            for layer_ind in layer_range:  # Skipped if range is empty
+                classifier_layer_names += 'extra_class' + str(layer_ind)
+                extra_classifiers.add_module(classifier_layer_names[-1], module=nn.Linear(input_features,
+                                                                                              extra_class_layers[0]))
+                classifier_layer_names += 'extra_class_dropout0'
+                extra_classifiers.add_module(name=classifier_layer_names[-1], module=nn.Dropout(p=dropout_rate))
+            self.extra_classifiers = extra_classifiers
+            self.extra_classifiers_names = classifier_layer_names
 
     def forward(self, input_ids, attention_mask, labels=None):
         x = self.model(input_ids, attention_mask=attention_mask, labels=labels)

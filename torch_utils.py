@@ -155,6 +155,8 @@ def get_model_size(model: torch.nn.Module) -> tuple[int, int, int]:
 
 def clear_layers_replace_dropout_rate(model: torch.nn.Module, layers_to_fix: str,
                                       dropout_rate: Optional[Union[float, list]] = None):
+    print(f"DEPRECATION WARNING: If fc/cnn layers will be cleared, it is not a good idea to keep dropout. "
+          f"This is not used and is planned to be removed.")
     if isinstance(layers_to_fix, str):
         layers_to_fix = list(layers_to_fix)
     layers_to_clear = [name for name in layers_to_fix if 'dropout' not in name]
