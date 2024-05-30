@@ -1,10 +1,11 @@
 import numpy as np
-from typing import Union
+from typing import Union, Optional
 
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from os_utils import endswith_list
+from os_utils import startswith_list
 
 
 def get_tensor_size(data: Union[torch.Tensor, dict]) -> float:
@@ -85,12 +86,13 @@ def predict_tokenized_classification(model: torch.nn.Module, test_dataloader: Da
 def freeze_layers(layers_keep_training: list, model: torch.nn.Module) -> torch.nn.Module:
     params_to_train = list()
     for param_name, param in model.named_parameters():
-        if endswith_list(param_name, layers_keep_training):
+        if startswith_list(param_name, layers_keep_training):
             param.requires_grad = True
             params_to_train.append(param_name)
         else:
             param.requires_grad = False
-    params_missing_from_net = [name for name in layers_keep_training if name not in params_to_train]
+    params_missing_from_net = [name for name in layers_keep_training if
+                               (name + '.bias' not in params_to_train) or (name + '.weight' not in params_to_train)]
     if params_missing_from_net:
         raise ValueError(f"Not all specified parameters were present in the network {params_missing_from_net}")
     return model
@@ -98,7 +100,7 @@ def freeze_layers(layers_keep_training: list, model: torch.nn.Module) -> torch.n
 
 def unfreeze_layers(model: torch.nn.Module, layers_to_unfreeze: Union[list, str] = 'all') -> torch.nn.Module:
     for param_name, param in model.named_parameters():
-        if layers_to_unfreeze == 'all' or endswith_list(param_name, layers_to_unfreeze):
+        if layers_to_unfreeze == 'all' or startswith_list(param_name, layers_to_unfreeze):
             param.requires_grad = True
         else:
             param.requires_grad = False
@@ -150,3 +152,46 @@ def get_model_size(model: torch.nn.Module) -> tuple[int, int, int]:
     size_all_mb = get_model_size_mb(model)
     param_number, param_number_trainable = get_model_param_num(model)
     return size_all_mb, param_number, param_number_trainable
+
+
+def clear_layers_replace_dropout_rate(model: torch.nn.Module, layers_to_fix: str,
+                                      dropout_rate: Optional[Union[float, list]] = None):
+    print(f"DEPRECATION WARNING: If fc/cnn layers will be cleared, it is not a good idea to keep dropout. "
+          f"This is not used and is planned to be removed.")
+    if isinstance(layers_to_fix, str):
+        layers_to_fix = list(layers_to_fix)
+    layers_to_clear = [name for name in layers_to_fix if 'dropout' not in name]
+    input_features = getattr(model, layers_to_clear[0]).in_features.shape[0]
+    clear_layers(model, layers_to_clear)
+
+    if dropout_rate is not None:
+        layers_to_update_dropout = [name for name in model.named_parameters() if 'dropout' in name]
+        if len(layers_to_update_dropout) != len(dropout_rate):
+            raise ValueError(f'Provide dropout rate as a single float, or match the number of dropout layers in model')
+        update_dropout_rate(model, layer_names=layers_to_update_dropout, dropout_rate=dropout_rate)
+    return input_features
+
+
+def clear_layers(model: torch.nn.Module, layer_names: Union[str, list]):
+    # Make one or more layers not do anything. This is a way to delete layers without having to update forward()
+    # To avoid having to overwrite the model forward method, set the layer to a passthrough (doesn't do anything)
+    if isinstance(layer_names, str):
+        layer_names = list(layer_names)
+    for layer_name in layer_names:
+        setattr(model, layer_name, Identity())
+
+
+def update_dropout_rate(model: torch.nn.Module, layer_names: Union[str, list], dropout_rate: float):
+    # Update dropout for one or more layers
+    if isinstance(layer_names, str):
+        layer_names = list(layer_names)
+    for layer_name in layer_names:
+        setattr(model, layer_name, nn.Dropout(p=dropout_rate))
+
+
+class Identity(nn.Module):
+    def __init__(self):
+        super(Identity, self).__init__()
+
+    def forward(self, x):
+        return x

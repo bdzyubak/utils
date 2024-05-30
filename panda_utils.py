@@ -40,7 +40,7 @@ def set_display_rows_cols(max_rows: int = 20, max_columns: int = 20, max_width: 
 def do_train_val_test_split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     df_train, df_test_val = train_test_split(df, train_size=0.6)
     df_val, df_test = train_test_split(df_test_val, train_size=0.5)
-    return df_test, df_train, df_val
+    return df_train, df_val, df_test
 
 
 def read_dataframe(file_path: str, nrows=None) -> pd.DataFrame:

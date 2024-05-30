@@ -115,6 +115,12 @@ def endswith_list(string: str, suffix_list: list) -> bool:
     return ends_with_any
 
 
+def startswith_list(string: str, suffix_list: list) -> bool:
+    # Check if string ends with any suffix in list
+    starts_with_any = list(filter(string.startswith, suffix_list)) != []
+    return starts_with_any
+
+
 def get_memory_use(code_point: str = '', log_to_mlflow: bool = False):
     """
     Memory profiling function. Use at multiple points or iterations to check if there is a leak
