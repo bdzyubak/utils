@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from os_utils import endswith_list
+from os_utils import startswith_list
 
 
 def get_tensor_size(data: Union[torch.Tensor, dict]) -> float:
@@ -86,12 +86,13 @@ def predict_tokenized_classification(model: torch.nn.Module, test_dataloader: Da
 def freeze_layers(layers_keep_training: list, model: torch.nn.Module) -> torch.nn.Module:
     params_to_train = list()
     for param_name, param in model.named_parameters():
-        if endswith_list(param_name, layers_keep_training):
+        if startswith_list(param_name, layers_keep_training):
             param.requires_grad = True
             params_to_train.append(param_name)
         else:
             param.requires_grad = False
-    params_missing_from_net = [name for name in layers_keep_training if name not in params_to_train]
+    params_missing_from_net = [name for name in layers_keep_training if
+                               (name + '.bias' not in params_to_train) or (name + '.weight' not in params_to_train)]
     if params_missing_from_net:
         raise ValueError(f"Not all specified parameters were present in the network {params_missing_from_net}")
     return model
@@ -99,7 +100,7 @@ def freeze_layers(layers_keep_training: list, model: torch.nn.Module) -> torch.n
 
 def unfreeze_layers(model: torch.nn.Module, layers_to_unfreeze: Union[list, str] = 'all') -> torch.nn.Module:
     for param_name, param in model.named_parameters():
-        if layers_to_unfreeze == 'all' or endswith_list(param_name, layers_to_unfreeze):
+        if layers_to_unfreeze == 'all' or startswith_list(param_name, layers_to_unfreeze):
             param.requires_grad = True
         else:
             param.requires_grad = False

@@ -26,7 +26,8 @@ supported_models = {'distilbert': 'distilbert-base-uncased', 'bert': 'bert-base-
 
 class FineTuneLLMAsClassifier(pl.LightningModule):
     def __init__(self, model_name: str, num_classes: int, device: str = 'cuda:0', learning_rate: float = 5e-5,
-                 do_layer_freeze: bool = True, extra_class_layers: Optional[Union[int, list]] = None):
+                 do_layer_freeze: bool = True, extra_class_layers: Optional[Union[int, list]] = None,
+                 fine_tune_dropout_rate: float = 0.1):
         """
         A Pytorch Lightning wrapper for supported LLM models for classification to simplify training and integrate with
         MLFlow
@@ -44,10 +45,10 @@ class FineTuneLLMAsClassifier(pl.LightningModule):
         """
 
         super(FineTuneLLMAsClassifier, self).__init__()
-        if isinstance(extra_class_layers, int):
-            # Fill with default number of connections. Otherwise, expect list of connections
-            self.extra_class_layers = [512] * extra_class_layers
+
         self.extra_class_layers = extra_class_layers
+        self.fine_tune_dropout_rate = fine_tune_dropout_rate
+
         self.set_up_model_and_tokenizer(device, do_layer_freeze, model_name, num_classes)
 
         self.learning_rate = learning_rate
@@ -60,8 +61,10 @@ class FineTuneLLMAsClassifier(pl.LightningModule):
         if model_name == 'distilbert':
             model = DistilBertForSequenceClassification.from_pretrained(supported_models['distilbert'],
                                                                         num_labels=num_classes)
-            self.fine_tune_head = ['pre_classifier.bias', 'pre_classifier.weight', 'classifier.bias',
-                                   'classifier.weight']
+            self.fine_tune_head = ['pre_classifier', 'classifier']
+            # Hardcode for now
+            self.fine_tune_input_layers = 768
+
         elif model_name == 'bert':
             model = BertForSequenceClassification.from_pretrained(supported_models['bert'], num_labels=num_classes)
             self.fine_tune_head = ['classifier.bias', 'classifier.weight']
@@ -77,47 +80,71 @@ class FineTuneLLMAsClassifier(pl.LightningModule):
             last_layer = ''  # Add this
         else:
             raise NotImplementedError(f"Support for the model {model_name} has not been implemented.")
-        self.model = model
 
-        layers_to_replace = self.fine_tune_head + ['dropout']
-        model, self.fine_tune_head = self.replace_layers_with_fc(self.model, self.fine_tune_head,
-                                                                 self.extra_class_layers)
+        if self.extra_class_layers:
+            if isinstance(self.extra_class_layers, int):
+                # Fill with default number of connections. Otherwise, expect list of connections
+                self.extra_class_layers = [self.fine_tune_input_layers] * self.extra_class_layers
+            else:
+                for ind, layer in enumerate(self.extra_class_layers):
+                    if layer < self.fine_tune_input_layers:
+                        print(f'WARNING: Specified fine tune head will result in bottleneck. Increasing layers to '
+                              f'{self.fine_tune_input_layers}')
+                        self.extra_class_layers[ind] = self.fine_tune_input_layers
+
+            self.model = model
+
+            layers_to_replace = self.fine_tune_head + ['dropout']
+            self.replace_layers_with_fc(layers_to_replace)
 
         if do_layer_freeze:
             self.model = freeze_layers(self.fine_tune_head, self.model)
-            mlflow.log_param("Freeze layers except", fine_tune_head)
+            mlflow.log_param("Fine tune layers", self.fine_tune_head)
         self.model.to(device)
 
-    def replace_layers_with_fc(self, model, layers_to_replace, extra_class_layers, dropout_rate=0.1):
+    def replace_layers_with_fc(self, layers_to_replace):
         # Sanitize inputs in case layers_to_replace specifies weights and biases
-        layers_to_replace = list(set([name.replace('.weight', '').replace('.bias', '')
-                                 for name in layers_to_replace]))
-        input_features = clear_layers(self.model, layers_to_replace)
+        clear_layers(self.model, layers_to_replace)
 
-        if extra_class_layers:
+        if self.extra_class_layers:
             classifier_layer_names = list()
+            classifier_dropout_layer_names = list()
             extra_classifiers = nn.Sequential()
-            classifier_layer_names += 'extra_class0'
-            extra_classifiers.add_module(name=classifier_layer_names[-1], module=nn.Linear(input_features,
-                                                                          extra_class_layers[0]))
-            classifier_layer_names += 'extra_class_dropout0'
-            extra_classifiers.add_module(name=classifier_layer_names[-1], module=nn.Dropout(p=dropout_rate))
-            layer_range = range(len(extra_class_layers[1:]))
+
+            layer_range = range(len(self.extra_class_layers))
 
             for layer_ind in layer_range:  # Skipped if range is empty
-                classifier_layer_names += 'extra_class' + str(layer_ind)
-                extra_classifiers.add_module(classifier_layer_names[-1], module=nn.Linear(input_features,
-                                                                                              extra_class_layers[0]))
-                classifier_layer_names += 'extra_class_dropout0'
-                extra_classifiers.add_module(name=classifier_layer_names[-1], module=nn.Dropout(p=dropout_rate))
-            self.extra_classifiers = extra_classifiers
-            self.extra_classifiers_names = classifier_layer_names
+                if layer_ind == 0:
+                    input_channels = self.fine_tune_input_layers
+                else:
+                    input_channels = self.extra_class_layers[layer_ind-1]
+
+                classifier_layer_names += ['extra_class' + str(layer_ind)]
+                extra_classifiers.add_module(name=classifier_layer_names[-1],
+                                             module=nn.Linear(input_channels,
+                                                              self.extra_class_layers[layer_ind]))
+                classifier_dropout_layer_names += ['extra_class_dropout' + str(layer_ind)]
+                extra_classifiers.add_module(name=classifier_dropout_layer_names[-1],
+                                             module=nn.Dropout(p=self.fine_tune_dropout_rate))
+
+            classifier_layer_names += ['extra_class_final']
+            extra_classifiers.add_module(name=classifier_layer_names[-1],
+                                         module=nn.Linear(self.extra_class_layers[-1],
+                                                          1))
+
+            self.fine_tune_head = ['classifier.' + name for name in classifier_layer_names]
+            self.model.classifier = extra_classifiers
 
     def forward(self, input_ids, attention_mask, labels=None):
         x = self.model(input_ids, attention_mask=attention_mask, labels=labels)
-        if self.extra_class_layers:
-            x = self.model.extra_classifiers(x)
+        # if self.extra_class_layers:
+        #     x = self.model.extra_classifiers(x)
         return x
+
+    def predict(self, input_ids, attention_mask, labels=None):
+        self.model.eval()
+        outputs = self.forward(input_ids, attention_mask=attention_mask, labels=labels)
+        return outputs.logits > 0
 
     def on_train_epoch_start(self):
         self.train_loss = list()
@@ -127,11 +154,10 @@ class FineTuneLLMAsClassifier(pl.LightningModule):
         input_ids = batch['input_ids']
         attention_mask = batch['attention_mask']
         labels = batch['labels']
-        labels_class = tensor_to_numpy(batch['labels_class'])
         outputs = self.model(input_ids, attention_mask=attention_mask, labels=labels)
         loss = outputs.loss
-        preds_batch = tensor_to_numpy(torch.argmax(outputs['logits'], axis=1))
-        train_acc_batch = accuracy_score(preds_batch, labels_class)
+        preds_batch = tensor_to_numpy(outputs['logits'] > 0.5)
+        train_acc_batch = accuracy_score(preds_batch, tensor_to_numpy(labels))
         self.train_loss.append(tensor_to_numpy(loss))
         self.train_acc.append(train_acc_batch)
         return loss
@@ -148,10 +174,9 @@ class FineTuneLLMAsClassifier(pl.LightningModule):
         input_ids = batch['input_ids']
         attention_mask = batch['attention_mask']
         labels = batch['labels']
-        labels_class = tensor_to_numpy(batch['labels_class'])
         outputs = self.model(input_ids, attention_mask=attention_mask, labels=labels)
-        preds_batch = tensor_to_numpy(torch.argmax(outputs['logits'], axis=1))
-        val_acc_batch = accuracy_score(preds_batch, labels_class)
+        preds_batch = tensor_to_numpy(outputs['logits'] > 0.5)
+        val_acc_batch = accuracy_score(preds_batch, tensor_to_numpy(labels))
         loss = outputs.loss
         self.val_loss.append(tensor_to_numpy(loss))
         self.val_acc.append(val_acc_batch)
