@@ -90,12 +90,12 @@ class FineTuneLLMAsClassifier(pl.LightningModule):
                     if layer < self.fine_tune_input_layers:
                         print(f'WARNING: Specified fine tune head will result in bottleneck. Increasing layers to '
                               f'{self.fine_tune_input_layers}')
-                        self.extra_class_layers[ind] = self.fine_tune_input_layers
-
-            self.model = model
+                        self.extra_class_layers[ind] = self.fine_tune_input_layer
 
             layers_to_replace = self.fine_tune_head + ['dropout']
             self.replace_layers_with_fc(layers_to_replace)
+
+        self.model = model
 
         if do_layer_freeze:
             self.model = freeze_layers(self.fine_tune_head, self.model)
