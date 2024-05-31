@@ -13,7 +13,7 @@ import mlflow
 from transformers import (DistilBertTokenizer, DistilBertForSequenceClassification, BertForSequenceClassification,
                           BertTokenizer, RobertaTokenizer, RobertaModel, AutoModelForCausalLM, AutoTokenizer)
 
-from torch_utils import clear_layers, freeze_layers, get_model_size
+from torch_utils import clear_layers, freeze_layers, get_model_param_num
 from utils.torch_utils import tensor_to_numpy, average_round_metric
 
 # NB: Speed up processing for negligible loss of accuracy. Verify acceptable accuracy for a production use case
@@ -53,6 +53,13 @@ class FineTuneLLMAsClassifier(pl.LightningModule):
 
         self.learning_rate = learning_rate
 
+        mlflow.log_params({'model_name': model_name,
+                           'num_classes': num_classes,
+                           'learning_rate': learning_rate,
+                           'do_layer_freeze': do_layer_freeze,
+                           'extra_class_layers': extra_class_layers,
+                           'fine_tune_dropout_rate': fine_tune_dropout_rate})
+
     def set_up_model_and_tokenizer(self, device, do_layer_freeze, model_name, num_classes):
         check_model_supported(model_name)
         # TODO: explore swapping tokenizers. For now, use native
@@ -81,6 +88,8 @@ class FineTuneLLMAsClassifier(pl.LightningModule):
         else:
             raise NotImplementedError(f"Support for the model {model_name} has not been implemented.")
 
+        self.model = model
+
         if self.extra_class_layers:
             if isinstance(self.extra_class_layers, int):
                 # Fill with default number of connections. Otherwise, expect list of connections
@@ -95,11 +104,14 @@ class FineTuneLLMAsClassifier(pl.LightningModule):
             layers_to_replace = self.fine_tune_head + ['dropout']
             self.replace_layers_with_fc(layers_to_replace)
 
-        self.model = model
-
         if do_layer_freeze:
             self.model = freeze_layers(self.fine_tune_head, self.model)
             mlflow.log_param("Fine tune layers", self.fine_tune_head)
+
+        param_num_total, param_num_trainable = get_model_param_num(model)
+        mlflow.log_param("Parameter number trainable", param_num_trainable)
+        mlflow.log_param("Parameter number total", param_num_total)
+
         self.model.to(device)
 
     def replace_layers_with_fc(self, layers_to_replace):
@@ -126,6 +138,10 @@ class FineTuneLLMAsClassifier(pl.LightningModule):
                 classifier_dropout_layer_names += ['extra_class_dropout' + str(layer_ind)]
                 extra_classifiers.add_module(name=classifier_dropout_layer_names[-1],
                                              module=nn.Dropout(p=self.fine_tune_dropout_rate))
+                extra_classifiers.add_module(name=classifier_dropout_layer_names[-1],
+                                             module=nn.Dropout(p=self.fine_tune_dropout_rate))
+                extra_classifiers.add_module(name='extra_class_activation' + str(layer_ind),
+                                             module=nn.GELU())
 
             classifier_layer_names += ['extra_class_final']
             extra_classifiers.add_module(name=classifier_layer_names[-1],

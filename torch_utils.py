@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from os_utils import startswith_list
+from os_utils import startswith_list, number_to_order_of_magnitude_string
 
 
 def get_tensor_size(data: Union[torch.Tensor, dict]) -> float:
@@ -134,18 +134,19 @@ def get_model_size_mb(model: torch.nn.Module) -> int:
     return size_all_mb
 
 
-def get_model_param_num(model: torch.nn.Module) -> tuple[int, int]:
+def get_model_param_num(model: torch.nn.Module) -> tuple[str, str]:
     param_number = 0
     param_number_trainable = 0
     for param in model.parameters():
         param_number += param.numel()
         if param.requires_grad:
             param_number_trainable += param.numel()
-    param_number_million = round(param_number / 1e6)
-    param_trainable_million = round(param_number / 1e6)
-    print(f"Parameters: {param_number_million} million")
-    print(f"Trainable Parameters: {param_trainable_million} million")
-    return param_number, param_number_trainable
+    param_number_str = number_to_order_of_magnitude_string(param_number)
+    param_trainable_str = number_to_order_of_magnitude_string(param_number_trainable)
+
+    print("Trainable Parameters: " + param_trainable_str)
+    print("Total Parameters: " + param_number_str)
+    return param_number_str, param_trainable_str
 
 
 def get_model_size(model: torch.nn.Module) -> tuple[int, int, int]:

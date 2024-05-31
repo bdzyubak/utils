@@ -143,3 +143,14 @@ def str_to_path(path: Union[str, Path]):
     if isinstance(path, str):
         path = Path(path)
     return path
+
+
+def number_to_order_of_magnitude_string(param_number: int) -> str:
+    # Specify order of magnitude, keep one decimal point beyond it
+    if param_number > 1000000:
+        number_as_string = f"{round(param_number / 100000) / 10} M"
+    elif param_number > 1000:
+        number_as_string = f"{round(param_number / 100) / 10} K"
+    else:
+        number_as_string = str(param_number)
+    return number_as_string
