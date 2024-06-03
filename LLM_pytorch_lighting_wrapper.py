@@ -241,6 +241,13 @@ def tokenizer_setup(tokenizer_name):
 
 def model_setup(save_dir, num_classes, model_name='distilbert-base-uncased', do_layer_freeze=True,
                 extra_class_layers=None):
+    trainer = trainer_setup(model_name, save_dir)
+    model = FineTuneLLMAsClassifier(model_name=model_name, num_classes=num_classes, do_layer_freeze=do_layer_freeze,
+                                    extra_class_layers=extra_class_layers)
+    return model, trainer
+
+
+def trainer_setup(model_name, save_dir):
     model_name_clean = model_name.split('\\')[-1]
     checkpoint_callback = ModelCheckpoint(dirpath=save_dir,
                                           filename=model_name_clean + "-{epoch:02d}-{val_loss:.2f}",
@@ -249,9 +256,6 @@ def model_setup(save_dir, num_classes, model_name='distilbert-base-uncased', do_
     early_stop_callback = EarlyStopping(monitor="val_acc", min_delta=0.0001, patience=5, verbose=False, mode="max")
     lr_monitor = LearningRateMonitor(logging_interval='step')
     tb_logger = loggers.TensorBoardLogger(save_dir=save_dir)
-    model = FineTuneLLMAsClassifier(model_name=model_name, num_classes=num_classes, do_layer_freeze=do_layer_freeze,
-                                    extra_class_layers=extra_class_layers)
-
     trainer = pl.Trainer(max_epochs=100, callbacks=[checkpoint_callback, early_stop_callback, lr_monitor],
                          logger=tb_logger, log_every_n_steps=50)
-    return model, trainer
+    return trainer
