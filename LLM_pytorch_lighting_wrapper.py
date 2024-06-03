@@ -59,13 +59,6 @@ class FineTuneLLMAsClassifier(pl.LightningModule):
                            'extra_class_layers': extra_class_layers,
                            'fine_tune_dropout_rate': fine_tune_dropout_rate})
 
-        mlflow.log_params({'model_name': model_name,
-                           'num_classes': num_classes,
-                           'learning_rate': learning_rate,
-                           'do_layer_freeze': do_layer_freeze,
-                           'extra_class_layers': extra_class_layers,
-                           'fine_tune_dropout_rate': fine_tune_dropout_rate})
-
     def set_up_model_and_tokenizer(self, device, do_layer_freeze, model_name, num_classes):
         check_model_supported(model_name)
         # TODO: explore swapping tokenizers. For now, use native
