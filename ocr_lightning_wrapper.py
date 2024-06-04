@@ -220,3 +220,36 @@ class FineTuneTrOCR(pl.LightningModule):
 #     trainer = pl.Trainer(max_epochs=100, callbacks=[checkpoint_callback, early_stop_callback, lr_monitor],
 #                          logger=tb_logger, log_every_n_steps=50)
 #     return model, trainer
+
+
+def ocr_print(image, processor, model):
+    """
+    :param image: PIL Image.
+    :param processor: Huggingface OCR processor.
+    :param model: Huggingface OCR model.
+
+    Returns:
+        generated_text: the OCR'd text string.
+    """
+    # We can directly perform OCR on cropped images.
+    generated_text = ocr(image, model, processor, do_print=True)
+    return generated_text
+
+
+def ocr(image, processor, model, do_print=False):
+    """
+    :param image: PIL Image.
+    :param processor: Huggingface OCR processor.
+    :param model: Huggingface OCR model.
+
+    Returns:
+        generated_text: the OCR'd text string.
+    """
+    pixel_values = processor(image, return_tensors='pt').pixel_values.to('cuda')
+    return_dict = model.generate(pixel_values, output_scores=True, return_dict_in_generate=True)
+    generated_text = processor.batch_decode(return_dict['sequences'], skip_special_tokens=True)[0]
+
+    if do_print:
+        print(return_dict['sequences'])
+        print(generated_text)
+    return generated_text

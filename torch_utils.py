@@ -3,6 +3,7 @@ from typing import Union, Optional
 
 import torch
 import torch.nn as nn
+from PIL import Image
 from torch.utils.data import DataLoader
 
 from os_utils import startswith_list, number_to_order_of_magnitude_string
@@ -196,3 +197,9 @@ class Identity(nn.Module):
 
     def forward(self, x):
         return x
+
+
+def display_tensor_with_PIL(pixel_values):
+    embeddings_np = np.swapaxes(np.swapaxes(tensor_to_numpy(torch.squeeze(pixel_values)), 0, 2), 0, 1)
+    embeddings = Image.fromarray((embeddings_np * 255).astype(np.uint8))
+    embeddings.show()
