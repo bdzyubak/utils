@@ -27,7 +27,7 @@ supported_models = {'distilbert': 'distilbert-base-uncased', 'bert': 'bert-base-
 class FineTuneLLMAsClassifier(pl.LightningModule):
     def __init__(self, model_name: str, num_classes: int, device: str = 'cuda:0', learning_rate: float = 5e-5,
                  do_layer_freeze: bool = True, extra_class_layers: Optional[Union[int, list]] = None,
-                 fine_tune_dropout_rate: float = 0.1):
+                 fine_tune_dropout_rate: float = 0):
         """
         A Pytorch Lightning wrapper for supported LLM models for classification to simplify training and integrate with
         MLFlow
@@ -52,7 +52,6 @@ class FineTuneLLMAsClassifier(pl.LightningModule):
         self.set_up_model_and_tokenizer(device, do_layer_freeze, model_name, num_classes)
 
         self.learning_rate = learning_rate
-
         mlflow.log_params({'model_name': model_name,
                            'num_classes': num_classes,
                            'learning_rate': learning_rate,
@@ -89,7 +88,6 @@ class FineTuneLLMAsClassifier(pl.LightningModule):
             raise NotImplementedError(f"Support for the model {model_name} has not been implemented.")
 
         self.model = model
-
         if self.extra_class_layers:
             if isinstance(self.extra_class_layers, int):
                 # Fill with default number of connections. Otherwise, expect list of connections
@@ -107,10 +105,12 @@ class FineTuneLLMAsClassifier(pl.LightningModule):
         if do_layer_freeze:
             self.model = freeze_layers(self.fine_tune_head, self.model)
             mlflow.log_param("Fine tune layers", self.fine_tune_head)
+        else:
+            mlflow.log_param("Fine tune layers", "All")
 
-        param_num_total, param_num_trainable = get_model_param_num(model)
-        mlflow.log_param("Parameter number trainable", param_num_trainable)
-        mlflow.log_param("Parameter number total", param_num_total)
+        param_total, param_trainable = get_model_param_num(self.model)
+        mlflow.log_param("Model params", param_total)
+        mlflow.log_param("Model params trainable", param_trainable)
 
         self.model.to(device)
 
@@ -241,6 +241,13 @@ def tokenizer_setup(tokenizer_name):
 
 def model_setup(save_dir, num_classes, model_name='distilbert-base-uncased', do_layer_freeze=True,
                 extra_class_layers=None):
+    trainer = trainer_setup(model_name, save_dir)
+    model = FineTuneLLMAsClassifier(model_name=model_name, num_classes=num_classes, do_layer_freeze=do_layer_freeze,
+                                    extra_class_layers=extra_class_layers)
+    return model, trainer
+
+
+def trainer_setup(model_name, save_dir):
     model_name_clean = model_name.split('\\')[-1]
     checkpoint_callback = ModelCheckpoint(dirpath=save_dir,
                                           filename=model_name_clean + "-{epoch:02d}-{val_loss:.2f}",
@@ -249,9 +256,6 @@ def model_setup(save_dir, num_classes, model_name='distilbert-base-uncased', do_
     early_stop_callback = EarlyStopping(monitor="val_acc", min_delta=0.0001, patience=5, verbose=False, mode="max")
     lr_monitor = LearningRateMonitor(logging_interval='step')
     tb_logger = loggers.TensorBoardLogger(save_dir=save_dir)
-    model = FineTuneLLMAsClassifier(model_name=model_name, num_classes=num_classes, do_layer_freeze=do_layer_freeze,
-                                    extra_class_layers=extra_class_layers)
-
     trainer = pl.Trainer(max_epochs=100, callbacks=[checkpoint_callback, early_stop_callback, lr_monitor],
                          logger=tb_logger, log_every_n_steps=50)
-    return model, trainer
+    return trainer
