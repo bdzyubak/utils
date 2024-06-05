@@ -1,5 +1,7 @@
 from typing import Union, Optional
 
+import numpy as np
+
 from datasets import load_metric
 from lightning.pytorch import loggers
 from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
@@ -47,74 +49,6 @@ class FineTuneTrOCR(pl.LightningModule):
         self.model.to(device)
 
         self.learning_rate = learning_rate
-
-        # self.extra_class_layers = extra_class_layers
-        # self.fine_tune_dropout_rate = fine_tune_dropout_rate
-        #
-        # self.set_up_model_and_tokenizer(device, do_layer_freeze, model_name, num_classes)
-        #
-        # self.learning_rate = learning_rate
-        # mlflow.log_params({'model_name': model_name,
-        #                    'num_classes': num_classes,
-        #                    'learning_rate': learning_rate,
-        #                    'do_layer_freeze': do_layer_freeze,
-        #                    'extra_class_layers': extra_class_layers,
-        #                    'fine_tune_dropout_rate': fine_tune_dropout_rate})
-
-    # def set_up_model_and_tokenizer(self, device, do_layer_freeze, model_name, num_classes):
-    #     check_model_supported(model_name)
-    #     # TODO: explore swapping tokenizers. For now, use native
-    #     # WARNING: The fine_tune_head layers must be in order, as the input_features are used to replace them when
-    #     # extra_class_layers is used
-    #     if model_name == 'distilbert':
-    #         model = DistilBertForSequenceClassification.from_pretrained(supported_models['distilbert'],
-    #                                                                     num_labels=num_classes)
-    #         self.fine_tune_head = ['pre_classifier', 'classifier']
-    #         # Hardcode for now
-    #         self.fine_tune_input_layers = 768
-    #
-    #     elif model_name == 'bert':
-    #         model = BertForSequenceClassification.from_pretrained(supported_models['bert'], num_labels=num_classes)
-    #         self.fine_tune_head = ['classifier.bias', 'classifier.weight']
-    #     elif model_name == 'roberta':
-    #         raise NotImplementedError(f"Trainer needs to pass arguments differently. labels keyword not found.")
-    #         model = RobertaModel.from_pretrained(supported_models['roberta'],
-    #                                              num_labels=num_classes)
-    #         self.fine_tune_head = ['pooler.dense.bias', 'pooler.dense.weight']
-    #     elif model_name.lower() == 'llama':
-    #         raise NotImplementedError(f"Not tested.")
-    #         model = AutoModelForCausalLM.from_pretrained(supported_models['llama'],
-    #                                                      num_classes=num_classes)
-    #         last_layer = ''  # Add this
-    #     else:
-    #         raise NotImplementedError(f"Support for the model {model_name} has not been implemented.")
-    #
-    #     self.model = model
-    #     if self.extra_class_layers:
-    #         if isinstance(self.extra_class_layers, int):
-    #             # Fill with default number of connections. Otherwise, expect list of connections
-    #             self.extra_class_layers = [self.fine_tune_input_layers] * self.extra_class_layers
-    #         else:
-    #             for ind, layer in enumerate(self.extra_class_layers):
-    #                 if layer < self.fine_tune_input_layers:
-    #                     print(f'WARNING: Specified fine tune head will result in bottleneck. Increasing layers to '
-    #                           f'{self.fine_tune_input_layers}')
-    #                     self.extra_class_layers[ind] = self.fine_tune_input_layer
-    #
-    #         layers_to_replace = self.fine_tune_head + ['dropout']
-    #         self.replace_layers_with_fc(layers_to_replace)
-    #
-    #     if do_layer_freeze:
-    #         self.model = freeze_layers(self.fine_tune_head, self.model)
-    #         mlflow.log_param("Fine tune layers", self.fine_tune_head)
-    #     else:
-    #         mlflow.log_param("Fine tune layers", "All")
-    #
-    #     param_total, param_trainable = get_model_param_num(self.model)
-    #     mlflow.log_param("Model params", param_total)
-    #     mlflow.log_param("Model params trainable", param_trainable)
-    #
-    #     self.model.to(device)
 
     def forward(self, batch):
         x = self.model(batch)
@@ -173,54 +107,6 @@ class FineTuneTrOCR(pl.LightningModule):
 
         return cer
 
-# def check_model_supported(model_name):
-#     if model_name not in supported_models:
-#         raise NotImplementedError(f"The model support for {model_name} has not been implemented.")
-#
-#
-# def tokenizer_setup(tokenizer_name):
-#     check_model_supported(tokenizer_name)
-#     if tokenizer_name == 'distilbert':
-#         tokenizer = DistilBertTokenizer.from_pretrained(supported_models['distilbert'])
-#     elif tokenizer_name == 'bert':
-#         tokenizer = BertTokenizer.from_pretrained(supported_models['bert'])
-#     elif tokenizer_name.startswith('roberta'):
-#         tokenizer = RobertaTokenizer.from_pretrained(supported_models['roberta'])
-#     elif tokenizer_name.startswith('llama'):
-#         tokenizer = AutoTokenizer.from_pretrained(supported_models['llama'])
-#     else:
-#         raise NotImplementedError()
-#     return tokenizer
-#
-#
-# # def qc_requested_models_supported(model_names):
-# #     models_unsupported = list()
-# #     for model_name in model_names:
-# #         try:
-# #             model = FineTuneLLM(num_classes=1, model_name=model_name)
-# #         except RuntimeError:
-# #             models_unsupported.append(model_name)
-# #     if models_unsupported:
-# #         raise ValueError(f'The following models are not supported {models_unsupported}')
-#
-#
-# def model_setup(save_dir, num_classes, model_name='distilbert-base-uncased', do_layer_freeze=True,
-#                 extra_class_layers=None):
-#     model_name_clean = model_name.split('\\')[-1]
-#     checkpoint_callback = ModelCheckpoint(dirpath=save_dir,
-#                                           filename=model_name_clean + "-{epoch:02d}-{val_loss:.2f}",
-#                                           save_top_k=1,
-#                                           monitor="val_acc")
-#     early_stop_callback = EarlyStopping(monitor="val_acc", min_delta=0.0001, patience=5, verbose=False, mode="max")
-#     lr_monitor = LearningRateMonitor(logging_interval='step')
-#     tb_logger = loggers.TensorBoardLogger(save_dir=save_dir)
-#     model = FineTuneLLMAsClassifier(model_name=model_name, num_classes=num_classes, do_layer_freeze=do_layer_freeze,
-#                                     extra_class_layers=extra_class_layers)
-#
-#     trainer = pl.Trainer(max_epochs=100, callbacks=[checkpoint_callback, early_stop_callback, lr_monitor],
-#                          logger=tb_logger, log_every_n_steps=50)
-#     return model, trainer
-
 
 def ocr_print(image, processor, model):
     """
@@ -232,8 +118,8 @@ def ocr_print(image, processor, model):
         generated_text: the OCR'd text string.
     """
     # We can directly perform OCR on cropped images.
-    generated_text = ocr(image, model, processor, do_print=True)
-    return generated_text
+    generated_text, score = ocr(image, processor, model, do_print=True)
+    return generated_text, score
 
 
 def ocr(image, processor, model, do_print=False):
@@ -250,6 +136,9 @@ def ocr(image, processor, model, do_print=False):
     generated_text = processor.batch_decode(return_dict['sequences'], skip_special_tokens=True)[0]
 
     if do_print:
-        print(return_dict['sequences'])
+        # print(return_dict['sequences'])
+        # TODO: This way of interpreting scores does not correlate with good predictions. Replace
+        max_score = np.max([tensor_to_numpy(torch.mean(score_tensor)) for score_tensor in return_dict['scores']])
+        print(f"Score: {max_score}")
         print(generated_text)
-    return generated_text
+    return generated_text, max_score
