@@ -154,3 +154,20 @@ def number_to_order_of_magnitude_string(param_number: int) -> str:
     else:
         number_as_string = str(param_number)
     return number_as_string
+
+
+def get_matched_files(path_source1, path_source2, extensions=None):
+    if extensions is None:
+        extensions = ['*.txt', '*.txt']
+    elif not isinstance(extensions, list):
+        extensions = [extensions, extensions]
+
+    files_source1 = list(path_source1.glob(extensions[0]))
+    files_source2 = list(path_source2.glob(extensions[1]))
+
+    source2_stems = [path.stem for path in files_source2]
+    files_source1 = sorted([path for path in files_source1 if path.stem in source2_stems])
+
+    source1_stems = [path.stem for path in files_source1]
+    files_source2 = sorted([path for path in files_source2 if path.stem in source1_stems])
+    return files_source1, files_source2
