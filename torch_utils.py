@@ -205,3 +205,10 @@ def display_tensor_with_PIL(pixel_values):
     embeddings_np = embeddings_np * 255 / np.max(embeddings_np)
     embeddings = Image.fromarray(embeddings_np.astype(np.uint8))
     embeddings.show()
+
+
+def tensor_mean(tensor_a, tensor_b, as_numpy=False):
+    mean_value = torch.mean(torch.stack([tensor_a, tensor_b]))
+    if as_numpy:
+        mean_value = tensor_to_numpy(mean_value)
+    return mean_value
