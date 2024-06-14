@@ -84,7 +84,10 @@ def predict_tokenized_classification(model: torch.nn.Module, test_dataloader: Da
     return preds
 
 
-def freeze_layers(layers_keep_training: list, model: torch.nn.Module) -> torch.nn.Module:
+def freeze_layers(layers_keep_training: Union[list, str], model: torch.nn.Module) -> torch.nn.Module:
+    if not isinstance(layers_keep_training, list):
+        layers_keep_training = [layers_keep_training]
+
     params_to_train = list()
     for param_name, param in model.named_parameters():
         if startswith_list(param_name, layers_keep_training):
@@ -150,7 +153,7 @@ def get_model_param_num(model: torch.nn.Module) -> tuple[str, str]:
     return param_number_str, param_trainable_str
 
 
-def get_model_size(model: torch.nn.Module) -> tuple[int, int, int]:
+def get_model_size(model: torch.nn.Module) -> tuple[str, str, str]:
     size_all_mb = get_model_size_mb(model)
     param_number, param_number_trainable = get_model_param_num(model)
     return size_all_mb, param_number, param_number_trainable
